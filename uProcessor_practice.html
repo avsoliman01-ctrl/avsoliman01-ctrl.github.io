@@ -444,6 +444,25 @@ table.frag td{font-size:12.5px}
 @media (max-width:560px){ .spimodes{grid-template-columns:minmax(0,1fr)} }
 .anl-head{flex-wrap:wrap;row-gap:4px}
 .anl-head .anl-trig{background:#12201B;color:#8FB0A2;border-color:#2B3E36;height:22px;font:500 11px var(--f-ui);letter-spacing:0;text-transform:none}
+/* analog board / ADC panel */
+.ain{display:flex;flex-direction:column;gap:6px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line-2)}
+.aslide{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;font-size:12.5px}
+.aslide label,.ain .ak{font:600 11px var(--f-cond);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.aslide input[type=range]{width:100%;accent-color:var(--accent);min-width:0}
+.aslide .v{font:500 12.5px var(--f-mono);color:var(--ink-2);min-width:118px;text-align:right;font-variant-numeric:tabular-nums}
+.agen{margin:0;align-items:flex-end}
+.agen .ak{align-self:center;margin-right:2px}
+.agen .tctl input{width:72px}
+.ain-pins{display:flex;flex-wrap:wrap;gap:3px 14px;font:500 12px var(--f-mono);color:var(--ink-2)}
+.ain-pins b{color:var(--ink)}
+.ain-wire{font-size:11.5px;line-height:1.45}
+.p-adc .tcgrid{margin-top:6px;grid-template-columns:repeat(auto-fill,minmax(168px,1fr))}
+.p-adc .tcnote{margin-top:6px;line-height:1.5}
+.mini-t{border-collapse:collapse;margin:6px 0 10px;font-size:12.5px}
+.mini-t th,.mini-t td{border:1px solid var(--line);padding:3px 9px;text-align:left}
+.mini-t th{background:var(--sunk);font:600 11px var(--f-cond);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-2)}
+.mini-t td code{font-size:12px}
+@media (max-width:560px){ .aslide{grid-template-columns:minmax(0,1fr) auto} .aslide input[type=range]{grid-column:1 / -1;grid-row:2} .agen .tctl input{width:64px} }
 </style>
 <div class="app" id="app">
   <header class="top">
@@ -488,7 +507,7 @@ table.frag td{font-size:12.5px}
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer" aria-label="Quick reference">
   <header><h2>Quick reference</h2><button class="btn ghost icon" id="refClose" aria-label="Close reference">✕</button></header>
-  <div class="tabs" id="refTabs"><button data-t="ports">Ports</button><button data-t="timers">Timers</button><button data-t="stack">Stack &amp; calls</button><button data-t="mem">Memory &amp; LPM</button><button data-t="serial">Serial</button><button data-t="spi">SPI &amp; IMU</button><button data-t="c">C</button><button data-t="isa">Instructions</button></div>
+  <div class="tabs" id="refTabs"><button data-t="ports">Ports</button><button data-t="timers">Timers</button><button data-t="stack">Stack &amp; calls</button><button data-t="mem">Memory &amp; LPM</button><button data-t="serial">Serial</button><button data-t="spi">SPI &amp; IMU</button><button data-t="adc">ADC &amp; events</button><button data-t="c">C</button><button data-t="isa">Instructions</button></div>
   <div class="body" id="refBody"></div>
 </aside>
 <div class="toast" id="toast" role="status"></div>
@@ -692,6 +711,52 @@ Object.keys(SPIS).forEach(m => SPI_REGS.forEach(([r, o, d]) => def(m + '_' + r, 
 def('SPI_MODE_gm', 0x0C, 'gm', 'SPI CTRL mode group mask'); def('SPI_MODE_gp', 2, 'gp', ''); def('SPI_PRESCALER_gm', 0x03, 'gm', ''); def('SPI_PRESCALER_gp', 0, 'gp', '');
 def('SPI_INTLVL_gm', 0x03, 'gm', ''); def('SPI_INTLVL_gp', 0, 'gp', '');
 
+/* ---------- ADC (§28) ---------- */
+const ADCS = { ADCA: [0x200, 'A'], ADCB: [0x240, 'B'] };
+const ADC_REGS = [['CTRLA', 0x00, 'DMASEL 7:6 · CH3START 5 · CH2START 4 · CH1START 3 · CH0START 2 · FLUSH 1 · ENABLE 0'], ['CTRLB', 0x01, 'IMPMODE 7 · CURRLIMIT 6:5 · CONMODE 4 (1 = signed) · FREERUN 3 · RESOLUTION 2:1'],
+  ['REFCTRL', 0x02, 'REFSEL 6:4 · BANDGAP 1 · TEMPREF 0'], ['EVCTRL', 0x03, 'SWEEP 7:6 · EVSEL 5:3 · EVACT 2:0'], ['PRESCALER', 0x04, 'PRESCALER 2:0: f_ADC = f_per / 4 … 512'], ['INTFLAGS', 0x06, 'CH3IF … CH0IF (bits 3:0)'], ['TEMP', 0x07, 'temporary register for 16-bit reads'],
+  ['CALL', 0x0C, 'calibration value low byte'], ['CALH', 0x0D, 'calibration value high byte'], ['CMPL', 0x18, 'compare value low byte'], ['CMPH', 0x19, 'compare value high byte']];
+for (let c = 0; c < 4; c++) ADC_REGS.push(['CH' + c + 'RESL', 0x10 + 2 * c, 'channel ' + c + ' result low byte'], ['CH' + c + 'RESH', 0x11 + 2 * c, 'channel ' + c + ' result high byte']);
+const ADC_CH_REGS = [['CTRL', 0, 'START 7 · GAIN 4:2 · INPUTMODE 1:0'], ['MUXCTRL', 1, 'MUXPOS 6:3 · MUXNEG 2:0'], ['INTCTRL', 2, 'INTMODE 3:2 · INTLVL 1:0'], ['INTFLAGS', 3, 'CHIF 0: conversion complete (write 1 to clear)'], ['RESL', 4, 'result low byte'], ['RESH', 5, 'result high byte'], ['SCAN', 6, 'scan offset / count']];
+Object.keys(ADCS).forEach(m => { const b = ADCS[m][0];
+  ADC_REGS.forEach(([r, o, d]) => def(m + '_' + r, b + o, 'io', m + ' ' + r + ' — ' + d));
+  for (let c = 0; c < 4; c++) ADC_CH_REGS.forEach(([r, o, d]) => def(m + '_CH' + c + '_' + r, b + 0x20 + 8 * c + o, 'io', m + ' channel ' + c + ' ' + r + ' — ' + d)); });
+[['ENABLE', 0x01, 'CTRLA enable the ADC'], ['FLUSH', 0x02, 'CTRLA flush the pipeline'], ['CH0START', 0x04, 'CTRLA start a conversion on channel 0'], ['CH1START', 0x08, ''], ['CH2START', 0x10, ''], ['CH3START', 0x20, ''],
+ ['CONMODE', 0x10, 'CTRLB conversion mode: 1 = signed, 0 = unsigned'], ['FREERUN', 0x08, 'CTRLB free-running mode'], ['IMPMODE', 0x80, 'CTRLB gain-stage impedance mode'], ['BANDGAP', 0x02, 'REFCTRL bandgap enable'], ['TEMPREF', 0x01, 'REFCTRL temperature reference enable'],
+ ['CH0IF', 0x01, 'INTFLAGS channel 0 flag'], ['CH1IF', 0x02, ''], ['CH2IF', 0x04, ''], ['CH3IF', 0x08, '']].forEach(([n, v, d]) => { def('ADC_' + n + '_bm', v, 'bm', 'ADC ' + (d || n)); def('ADC_' + n + '_bp', Math.log2(v), 'bp', ''); });
+[['RESOLUTION', [['12BIT', 0x00, '12-bit, right adjusted'], ['8BIT', 0x04, '8-bit'], ['LEFT12BIT', 0x06, '12-bit, left adjusted']], 0x06],
+ ['REFSEL', [['INT1V', 0x00, 'internal 1.00 V'], ['INTVCC', 0x10, 'internal VCC / 1.6'], ['AREFA', 0x20, 'external reference on AREF of PORTA (PA0)'], ['AREFB', 0x30, 'external reference on AREF of PORTB (PB0)'], ['INTVCC2', 0x40, 'internal VCC / 2']], 0x70],
+ ['SWEEP', [['0', 0x00, 'channel 0'], ['01', 0x40, 'channels 0–1'], ['012', 0x80, 'channels 0–2'], ['0123', 0xC0, 'channels 0–3']], 0xC0],
+ ['EVSEL', [['0123', 0x00, 'event channels 0, 1, 2, 3'], ['1234', 0x08, 'event channels 1–4'], ['2345', 0x10, 'event channels 2–5'], ['3456', 0x18, 'event channels 3–6'], ['4567', 0x20, 'event channels 4–7'], ['567', 0x28, 'event channels 5–7'], ['67', 0x30, 'event channels 6–7'], ['7', 0x38, 'event channel 7']], 0x38],
+ ['EVACT', [['NONE', 0, 'no event action'], ['CH0', 1, 'first event channel starts ADC channel 0'], ['CH01', 2, 'first two event channels start channels 0, 1'], ['CH012', 3, ''], ['CH0123', 4, ''], ['SWEEP', 5, 'first event channel starts a sweep'], ['SYNCSWEEP', 6, 'first event channel restarts and sweeps']], 0x07],
+ ['PRESCALER', [['DIV4', 0, 'f_ADC = f_per/4'], ['DIV8', 1, '/8'], ['DIV16', 2, '/16'], ['DIV32', 3, '/32'], ['DIV64', 4, '/64'], ['DIV128', 5, '/128'], ['DIV256', 6, '/256'], ['DIV512', 7, '/512']], 0x07],
+ ['CURRLIMIT', [['NO', 0x00, ''], ['LOW', 0x20, ''], ['MED', 0x40, ''], ['HIGH', 0x60, '']], 0x60]]
+  .forEach(([g, list, gm]) => { def('ADC_' + g + '_gm', gm, 'gm', 'ADC ' + g + ' group mask'); list.forEach(([n, v, d]) => def('ADC_' + g + '_' + n + '_gc', v, 'gc', 'ADC ' + g + ' — ' + (d || n))); });
+def('ADC_CH_START_bm', 0x80, 'bm', 'ADC channel CTRL: start a conversion on this channel'); def('ADC_CH_START_bp', 7, 'bp', '');
+def('ADC_CH_CHIF_bm', 0x01, 'bm', 'ADC channel INTFLAGS: conversion complete (cleared by writing 1, or by the interrupt vector)'); def('ADC_CH_CHIF_bp', 0, 'bp', '');
+[['1X', 0], ['2X', 1], ['4X', 2], ['8X', 3], ['16X', 4], ['32X', 5], ['64X', 6], ['DIV2', 7]].forEach(([n, v]) => def('ADC_CH_GAIN_' + n + '_gc', v << 2, 'gc', 'ADC channel gain ' + n + ' (differential with gain only)'));
+[['INTERNAL', 0, 'internal signal (temperature, bandgap, VCC/10, DAC)'], ['SINGLEENDED', 1, 'single-ended: MUXPOS against ground'], ['DIFF', 2, 'differential without gain: MUXNEG selects PIN0–PIN3'], ['DIFFWGAIN', 3, 'differential with gain: MUXNEG selects PIN4–PIN7']].forEach(([n, v, d]) => def('ADC_CH_INPUTMODE_' + n + '_gc', v, 'gc', 'ADC channel input mode — ' + d));
+for (let i = 0; i < 16; i++) def('ADC_CH_MUXPOS_PIN' + i + '_gc', i << 3, 'gc', 'ADC positive input: pin ' + i + ' of the ADC’s port' + (i > 7 ? ' (ADC' + i + ')' : ''));
+[['TEMP', 0], ['BANDGAP', 1], ['SCALEDVCC', 2], ['DAC', 3]].forEach(([n, v]) => def('ADC_CH_MUXINT_' + n + '_gc', v << 3, 'gc', 'ADC internal input ' + n + ' (INPUTMODE = INTERNAL)'));
+for (let i = 0; i < 8; i++) def('ADC_CH_MUXNEG_PIN' + i + '_gc', i & 3, 'gc', 'ADC negative input pin ' + i + (i < 4 ? ' (INPUTMODE = DIFF)' : ' (INPUTMODE = DIFFWGAIN — MUXNEG field value ' + (i & 3) + ')'));
+def('ADC_CH_MUXNEG_GND_MODE3_gc', 0x05, 'gc', 'ADC negative input: pad ground (INPUTMODE = DIFF)'); def('ADC_CH_MUXNEG_INTGND_MODE3_gc', 0x07, 'gc', 'ADC negative input: internal ground (DIFF)');
+def('ADC_CH_MUXNEG_INTGND_MODE4_gc', 0x04, 'gc', 'ADC negative input: internal ground (DIFFWGAIN)'); def('ADC_CH_MUXNEG_GND_MODE4_gc', 0x07, 'gc', 'ADC negative input: pad ground (DIFFWGAIN)');
+def('ADC_CH_MUXPOS_gm', 0x78, 'gm', ''); def('ADC_CH_MUXNEG_gm', 0x07, 'gm', ''); def('ADC_CH_GAIN_gm', 0x1C, 'gm', ''); def('ADC_CH_INPUTMODE_gm', 0x03, 'gm', '');
+[['COMPLETE', 0x00, 'interrupt when a conversion completes'], ['BELOW', 0x04, 'interrupt when the result is below CMP'], ['ABOVE', 0x0C, 'interrupt when the result is above CMP']].forEach(([n, v, d]) => def('ADC_CH_INTMODE_' + n + '_gc', v, 'gc', 'ADC channel ' + d));
+['OFF', 'LO', 'MED', 'HI'].forEach((l, i) => def('ADC_CH_INTLVL_' + l + '_gc', i, 'gc', 'ADC channel interrupt level ' + l));
+def('ADC_CH_INTMODE_gm', 0x0C, 'gm', ''); def('ADC_CH_INTLVL_gm', 0x03, 'gm', '');
+
+/* ---------- Event system (§6) ---------- */
+const EVSYS_BASE = 0x180;
+for (let c = 0; c < 8; c++) { def('EVSYS_CH' + c + 'MUX', EVSYS_BASE + c, 'io', 'Event channel ' + c + ' multiplexer — which event source drives channel ' + c); def('EVSYS_CH' + c + 'CTRL', EVSYS_BASE + 8 + c, 'io', 'Event channel ' + c + ' control (digital filter, quadrature decoder)'); }
+def('EVSYS_STROBE', EVSYS_BASE + 0x10, 'io', 'Event strobe: writing a 1 to bit n creates an event on channel n'); def('EVSYS_DATA', EVSYS_BASE + 0x11, 'io', 'Event data');
+const EVMUX = { OFF: 0x00, RTC_OVF: 0x08, RTC_CMP: 0x09, ACA_CH0: 0x10, ACA_CH1: 0x11, ACA_WIN: 0x12, ACB_CH0: 0x13, ACB_CH1: 0x14, ACB_WIN: 0x15, ADCA_CH0: 0x20, ADCA_CH1: 0x21, ADCA_CH2: 0x22, ADCA_CH3: 0x23, ADCB_CH0: 0x24, ADCB_CH1: 0x25, ADCB_CH2: 0x26, ADCB_CH3: 0x27 };
+['A', 'B', 'C', 'D', 'E', 'F'].forEach((L, k) => { for (let i = 0; i < 8; i++) EVMUX['PORT' + L + '_PIN' + i] = 0x50 + 8 * k + i; });
+for (let i = 0; i < 16; i++) EVMUX['PRESCALER_' + Math.pow(2, i)] = 0x80 + i;
+['TCC0', 'TCC1', 'TCD0', 'TCD1', 'TCE0', 'TCE1', 'TCF0', 'TCF1'].forEach((t, k) => { const b = 0xC0 + 8 * k; EVMUX[t + '_OVF'] = b; EVMUX[t + '_ERR'] = b + 1; ['CCA', 'CCB', 'CCC', 'CCD'].slice(0, t[3] === '0' ? 4 : 2).forEach((c, i) => { EVMUX[t + '_' + c] = b + 4 + i; }); });
+Object.keys(EVMUX).forEach(k => def('EVSYS_CHMUX_' + k + '_gc', EVMUX[k], 'gc', 'Event source: ' + k.replace(/_/g, ' ')));
+[['1SAMPLE', 0], ['2SAMPLES', 1], ['3SAMPLES', 2], ['4SAMPLES', 3], ['5SAMPLES', 4], ['6SAMPLES', 5], ['7SAMPLES', 6], ['8SAMPLES', 7]].forEach(([n, v]) => def('EVSYS_DIGFILT_' + n + '_gc', v, 'gc', 'Event channel digital filter: ' + n.toLowerCase()));
+
 const VECT = { OSC_OSCF: 0x02, OSC_XOSCF: 0x02, PORTC_INT0: 0x04, PORTC_INT1: 0x06, PORTR_INT0: 0x08, PORTR_INT1: 0x0A,
   DMA_CH0: 0x0C, DMA_CH1: 0x0E, DMA_CH2: 0x10, DMA_CH3: 0x12, RTC_OVF: 0x14, RTC_COMP: 0x16, TWIC_TWIS: 0x18, TWIC_TWIM: 0x1A,
   TCC0_OVF: 0x1C, TCC0_ERR: 0x1E, TCC0_CCA: 0x20, TCC0_CCB: 0x22, TCC0_CCC: 0x24, TCC0_CCD: 0x26,
@@ -703,6 +768,8 @@ const VECT = { OSC_OSCF: 0x02, OSC_XOSCF: 0x02, PORTC_INT0: 0x04, PORTC_INT1: 0x
   TCE0_OVF: 0x5E, TCE0_ERR: 0x60, TCE0_CCA: 0x62, TCE0_CCB: 0x64, TCE0_CCC: 0x66, TCE0_CCD: 0x68,
   TCE1_OVF: 0x6A, TCE1_ERR: 0x6C, TCE1_CCA: 0x6E, TCE1_CCB: 0x70,
   PORTD_INT0: 0x80, PORTD_INT1: 0x82, PORTA_INT0: 0x84, PORTA_INT1: 0x86,
+  ACA_AC0: 0x88, ACA_AC1: 0x8A, ACA_ACW: 0x8C, ADCA_CH0: 0x8E, ADCA_CH1: 0x90, ADCA_CH2: 0x92, ADCA_CH3: 0x94, TWID_TWIS: 0x96, TWID_TWIM: 0x98,
+  ACB_AC0: 0x48, ACB_AC1: 0x4A, ACB_ACW: 0x4C,
   TCD0_OVF: 0x9A, TCD0_ERR: 0x9C, TCD0_CCA: 0x9E, TCD0_CCB: 0xA0, TCD0_CCC: 0xA2, TCD0_CCD: 0xA4,
   TCD1_OVF: 0xA6, TCD1_ERR: 0xA8, TCD1_CCA: 0xAA, TCD1_CCB: 0xAC,
   PORTQ_INT0: 0xBC, PORTQ_INT1: 0xBE, PORTH_INT0: 0xC0, PORTH_INT1: 0xC2, PORTJ_INT0: 0xC4, PORTJ_INT1: 0xC6,
@@ -717,7 +784,7 @@ const REGALIAS = { XL: 26, XH: 27, YL: 28, YH: 29, ZL: 30, ZH: 31 };
 function lookup(name) { return SYM[name.toUpperCase()]; }
 function ioName(addr) { return ADDR.has(addr) ? ADDR.get(addr) : null; }
 
-XL.defs = { SYM, lookup, ioName, hx, PORTS, TCS, VECT, USARTS, SPIS, REGALIAS, PORT_REGS, TC_REGS, VPNAMES,
+XL.defs = { SYM, lookup, ioName, hx, PORTS, TCS, VECT, USARTS, SPIS, ADCS, EVMUX, EVSYS_BASE, REGALIAS, PORT_REGS, TC_REGS, VPNAMES,
   names: () => Object.keys(SYM).map(k => SYM[k].n) };
 })(typeof globalThis !== 'undefined' ? (globalThis.XL = globalThis.XL || {}) : (window.XL = window.XL || {}));
 
@@ -1428,7 +1495,7 @@ class TC {
   get top() { return (this.ctrlb & 7) === 1 ? this.cc[0] : this.per; }
   clk(v) {
     const cs = v & 0x0F; this.ctrla = v & 0x0F; const N = cs < 8 ? PRESC[cs] : 0;
-    if (cs >= 8) this.sim.lint('evclk' + this.name, this.name + ' is clocked from an event channel — events are not simulated, so it will not count');
+    if (cs >= 8 && this.sim.evsys && !this.sim.evsys.mux[cs - 8]) this.sim.lint('evclk' + this.name, this.name + ' counts events on channel ' + (cs - 8) + ', but EVSYS.CH' + (cs - 8) + 'MUX selects no source yet');
     if (N && !this.N) this.startC = this.sim.cycles;
     this.N = N; this.acc = 0; this.sim.refreshTimers();
   }
@@ -1445,10 +1512,10 @@ class TC {
   }
   ccHit(lo, hi) {
     const n = this.type ? 2 : 4;
-    for (let i = 0; i < n; i++) { const v = this.cc[i]; if (v > lo && v <= hi) this.flag(0x10 << i); }
+    for (let i = 0; i < n; i++) { const v = this.cc[i]; if (v > lo && v <= hi) { this.flag(0x10 << i); if (this.sim.evsys) this.sim.evsys.fire(D.EVMUX[this.name + '_CC' + 'ABCD'[i]]); } }
   }
   overflow() {
-    this.flag(1);
+    this.flag(1); if (this.sim.evsys) this.sim.evsys.fire(D.EVMUX[this.name + '_OVF']);
     const s = this.sim; this.ovf.push(s.cycles); if (this.ovf.length > 400) this.ovf.splice(0, 200);
     if (this.ctrlg & 1) { this.per = this.perbuf; this.ctrlg &= ~1; }
     for (let i = 0; i < 4; i++) if (this.ctrlg & (2 << i)) { this.cc[i] = this.ccbuf[i]; this.ctrlg &= ~(2 << i); }
@@ -1741,6 +1808,135 @@ class SpiDevice {
   firstOut() { return 0xFF; } onByte() { return 0xFF; } onEnd() {} onReset() {}
 }
 
+/* ---------------- ADC (§28): conversions sampled from the analog board ---------------- */
+class Adc {
+  constructor(sim, name, base, L) { this.sim = sim; this.name = name; this.base = base; this.L = L; this.vect = [0, 1, 2, 3].map(i => D.VECT[name + '_CH' + i]); this.reset(); }
+  reset() {
+    this.ctrla = 0; this.ctrlb = 0; this.refctrl = 0; this.evctrl = 0; this.prescaler = 0; this.temp = 0; this.cal = 0; this.cmp = 0;
+    this.ch = [0, 1, 2, 3].map(() => ({ ctrl: 0, mux: 0, intctrl: 0, flag: 0, res: 0, scan: 0 }));
+    this.pend = []; this.next = Infinity; this.log = []; this.evCount = 0; this.wlog = [];
+  }
+  get on() { return (this.ctrla & 1) === 1; }
+  get signed() { return (this.ctrlb & 0x10) !== 0; }
+  get resMode() { return (this.ctrlb >> 1) & 3; }
+  div() { return 1 << ((this.prescaler & 7) + 2); }
+  vref() {
+    const a = this.sim.analog, vcc = a ? a.vcc : 3.3, sel = (this.refctrl >> 4) & 7;
+    if (sel === 0) return 1.0; if (sel === 1) return vcc / 1.6; if (sel === 4) return vcc / 2;
+    if (sel === 2 || sel === 3) { const v = a && a.aref ? a.aref(sel === 2 ? 'A' : 'B') : null; if (v == null) { this.sim.lint('aref' + this.name + sel, this.name + ' uses AREF' + (sel === 2 ? 'A (PA0)' : 'B (PB0)') + ' as its reference, but nothing is connected to that pin on this board', 'Check the board’s schematic for which reference pin is wired, or use an internal reference.'); return vcc; } return v; }
+    this.sim.lint('refsel' + this.name, this.name + '_REFCTRL selects a reserved reference'); return vcc;
+  }
+  pinV(i) {
+    if (i > 7) { this.sim.lint('adcpin' + this.name + i, this.name + ' input ADC' + i + ' is not wired on this board'); return 0; }
+    const a = this.sim.analog; const p = this.sim.ports[this.L];
+    if (p.dir & (1 << i)) { this.sim.lint('adcout' + this.name + i, this.name + ' is measuring P' + this.L + i + ', which is configured as an output', 'ADC inputs must be inputs: P' + this.L + '.DIRCLR = PIN' + i + '_bm.'); return (p.level() >> i) & 1 ? (a ? a.vcc : 3.3) : 0; }
+    return a && a.v ? a.v(this.L, i, this.sim.time()) : 0;
+  }
+  /* what the converter would produce now for channel c */
+  convert(c) {
+    const ch = this.ch[c], mode = ch.ctrl & 3, gc = (ch.ctrl >> 2) & 7, pos = (ch.mux >> 3) & 15, neg = ch.mux & 7;
+    let vp = 0, vn = 0, gain = 1, desc = '';
+    if (mode === 0) { vp = [0.7, 1.1, (this.sim.analog ? this.sim.analog.vcc : 3.3) / 10, 0][pos & 3] || 0; desc = ['temperature', 'bandgap', 'VCC/10', 'DAC'][pos & 3] || 'internal'; }
+    else if (mode === 1) { vp = this.pinV(pos); desc = 'P' + this.L + pos + ' vs GND'; }
+    else if (mode === 2) { vp = this.pinV(pos); if (neg <= 3) { vn = this.pinV(neg); desc = 'P' + this.L + pos + ' − P' + this.L + neg; } else if (neg === 5 || neg === 7) desc = 'P' + this.L + pos + ' − GND'; else { this.sim.lint('mneg' + this.name + c, this.name + ' CH' + c + ': MUXNEG = ' + neg + ' is not a valid negative input in differential mode without gain (only PIN0–PIN3, GND)', 'Pins 4–7 as the negative input need INPUTMODE = DIFFWGAIN.'); desc = '?'; } }
+    else { vp = this.pinV(pos); gain = gc === 7 ? 0.5 : 1 << gc; if (neg <= 3) { vn = this.pinV(neg + 4); desc = 'P' + this.L + pos + ' − P' + this.L + (neg + 4) + (gain !== 1 ? ' ×' + gain : ''); } else if (neg === 4 || neg === 7) desc = 'P' + this.L + pos + ' − GND' + (gain !== 1 ? ' ×' + gain : ''); else { this.sim.lint('mnegg' + this.name + c, this.name + ' CH' + c + ': MUXNEG = ' + neg + ' is reserved in differential-with-gain mode'); desc = '?'; } }
+    const vref = this.vref(), v = (vp - vn) * gain, rm = this.resMode, bits8 = rm === 2;
+    if (mode >= 2 && !this.signed) this.sim.lint('dunsig' + this.name, this.name + ' is doing a differential measurement in unsigned mode', 'Differential inputs need signed mode: set ADC_CONMODE_bm in CTRLB.');
+    let code;
+    if (this.signed) { const top = bits8 ? 128 : 2048; code = Math.max(-top, Math.min(top - 1, Math.round(v / vref * top))); }
+    else { const top = bits8 ? 256 : 4096; code = Math.max(0, Math.min(top - 1, Math.round(v / vref * top))); }
+    if (rm === 3) code = code * 16;
+    return { code: code & 0xFFFF, v, vp, vn, vref, desc };
+  }
+  start(c, why) {
+    const s = this.sim;
+    if (!this.on) { s.lint('adcoff' + this.name, 'A conversion was requested on ' + this.name + ' CH' + c + ', but the ADC is not enabled', 'Set ADC_ENABLE_bm in ' + this.name + '.CTRLA (after configuring it).'); return; }
+    if (this.pend.some(p => p.c === c)) return;
+    const clocks = (this.resMode === 2 ? 5 : 7) + ((this.ch[c].ctrl & 3) === 3 ? 1 : 0) + this.pend.length;
+    const r = this.convert(c);
+    this.pend.push({ c, done: s.cycles + clocks * this.div(), c0: s.cycles, r, why }); this.sched();
+  }
+  sweep(why) { const n = (this.evctrl >> 6) & 3; for (let c = 0; c <= n; c++) this.start(c, why); }
+  event(evch) {
+    const act = this.evctrl & 7; if (!act) return; const base = [0, 1, 2, 3, 4, 5, 6, 7][(this.evctrl >> 3) & 7]; const k = evch - base; if (k < 0) return;
+    this.evCount++;
+    if (act >= 1 && act <= 4) { if (k < act) this.start(k, 'event ' + evch); }
+    else if ((act === 5 || act === 6) && k === 0) this.sweep('event ' + evch);
+  }
+  sched() { this.next = this.pend.reduce((m, p) => Math.min(m, p.done), Infinity); this.sim.refreshUsarts(); }
+  tick(now) {
+    const s = this.sim; let again = false;
+    this.pend.sort((a, b) => a.done - b.done);
+    while (this.pend.length && this.pend[0].done <= now) {
+      const p = this.pend.shift(), ch = this.ch[p.c], res = p.r.code; ch.res = res;
+      const sv = this.signed ? (res << 16) >> 16 : res, im = (ch.intctrl >> 2) & 3;
+      const hit = im === 0 || (im === 1 && sv < ((this.cmp << 16) >> 16)) || (im === 3 && sv > ((this.cmp << 16) >> 16));
+      if (hit) ch.flag = 1;
+      this.log.push({ c: p.done, c0: p.c0, ch: p.c, res: sv, v: p.r.v, vref: p.r.vref, desc: p.r.desc, why: p.why }); if (this.log.length > 6000) this.log.splice(0, 3000);
+      if (hit && (ch.intctrl & 3)) s.irqDirty = true;
+      if (s.evsys) s.evsys.fire(D.EVMUX[this.name + '_CH' + p.c]);
+      if ((this.ctrlb & 0x08) && this.on && p.c === ((this.evctrl >> 6) & 3)) again = true;
+    }
+    if (again) this.sweep('free-run');
+    this.sched();
+  }
+  read(o) {
+    if (o >= 0x20 && o < 0x40) {
+      const c = (o - 0x20) >> 3, k = (o - 0x20) & 7, ch = this.ch[c];
+      switch (k) { case 0: return ch.ctrl | (this.pend.some(p => p.c === c) ? 0x80 : 0); case 1: return ch.mux; case 2: return ch.intctrl; case 3: return ch.flag;
+        case 4: this.temp = (ch.res >> 8) & 0xFF; return ch.res & 0xFF; case 5: return this.temp; case 6: return ch.scan; }
+      return 0;
+    }
+    if (o >= 0x10 && o < 0x18) { const ch = this.ch[(o - 0x10) >> 1]; if (!(o & 1)) { this.temp = (ch.res >> 8) & 0xFF; return ch.res & 0xFF; } return this.temp; }
+    switch (o) {
+      case 0x00: return this.ctrla & 0xC3; case 0x01: return this.ctrlb; case 0x02: return this.refctrl; case 0x03: return this.evctrl; case 0x04: return this.prescaler;
+      case 0x06: return this.ch.reduce((m, ch, i) => m | (ch.flag << i), 0); case 0x07: return this.temp;
+      case 0x0C: return this.cal & 0xFF; case 0x0D: return this.cal >> 8; case 0x18: this.temp = this.cmp >> 8; return this.cmp & 0xFF; case 0x19: return this.temp;
+    }
+    return 0;
+  }
+  write(o, v) {
+    const s = this.sim; this.wlog.push({ o, v, c: s.cycles }); if (this.wlog.length > 2000) this.wlog.splice(0, 1000);
+    if (o >= 0x20 && o < 0x40) {
+      const c = (o - 0x20) >> 3, k = (o - 0x20) & 7, ch = this.ch[c];
+      switch (k) {
+        case 0: ch.ctrl = v & 0x7F; if (v & 0x80) this.start(c, 'software'); return;
+        case 1: ch.mux = v & 0x7F; return; case 2: ch.intctrl = v & 0x0F; s.irqDirty = true; return;
+        case 3: if (v & 1) ch.flag = 0; return; case 6: ch.scan = v; return;
+      }
+      return;
+    }
+    switch (o) {
+      case 0x00: {
+        const wasOn = this.on; this.ctrla = v & 0xC3;
+        if (v & 0x02) { this.pend = []; this.sched(); }
+        for (let c = 0; c < 4; c++) if (v & (4 << c)) this.start(c, 'software');
+        if (!wasOn && this.on && (this.ctrlb & 0x08)) this.sweep('free-run');
+        return;
+      }
+      case 0x01: { const was = this.ctrlb; this.ctrlb = v; if (this.on && !(was & 0x08) && (v & 0x08)) this.sweep('free-run'); return; }
+      case 0x02: this.refctrl = v; return; case 0x03: this.evctrl = v; return; case 0x04: this.prescaler = v & 7; return;
+      case 0x06: for (let c = 0; c < 4; c++) if (v & (1 << c)) this.ch[c].flag = 0; return;
+      case 0x07: this.temp = v; return;
+      case 0x0C: this.temp = v; return; case 0x0D: this.cal = (v << 8) | this.temp; return;
+      case 0x18: this.temp = v; return; case 0x19: this.cmp = (v << 8) | this.temp; return;
+    }
+  }
+}
+/* ---------------- event system (§6) ---------------- */
+class Evsys {
+  constructor(sim) { this.sim = sim; this.reset(); }
+  reset() { this.mux = new Uint8Array(8); this.ctrl = new Uint8Array(8); this.data = 0; this.count = new Uint32Array(8); this.last = new Array(8).fill(null); }
+  fire(code) { if (!code) return; for (let c = 0; c < 8; c++) if (this.mux[c] === code) this.route(c); }
+  route(c) {
+    const s = this.sim; this.count[c]++; this.last[c] = s.cycles; this.data |= 1 << c;
+    for (const k in s.adcs) s.adcs[k].event(c);
+    for (const k in s.tcs) { const t = s.tcs[k]; if ((t.ctrla & 0x0F) === 8 + c) t.ticks(1); }
+  }
+  read(o) { if (o < 8) return this.mux[o]; if (o < 16) return this.ctrl[o - 8]; if (o === 0x10) return 0; if (o === 0x11) return this.data; return 0; }
+  write(o, v) { if (o < 8) { this.mux[o] = v; return; } if (o < 16) { this.ctrl[o - 8] = v; return; } if (o === 0x10) { for (let c = 0; c < 8; c++) if (v & (1 << c)) this.route(c); } }
+}
+
 /* ---------------- CPU / system ---------------- */
 class Sim {
   constructor(opts) {
@@ -1754,6 +1950,8 @@ class Sim {
     Object.keys(D.TCS).forEach(t => { const [b, ty] = D.TCS[t]; const tc = new TC(this, t, b, ty); this.tcs[t] = tc; this.tcAt[(b - 0x800) >> 6] = tc; });
     this.usarts = {}; this.usartAt = {}; Object.keys(D.USARTS).forEach(u => { const [b, L, rx, tx] = D.USARTS[u]; const x = new Usart(this, u, b, L, rx, tx); this.usarts[u] = x; this.usartAt[b] = x; });
     this.spis = {}; this.spiAt = {}; Object.keys(D.SPIS).forEach(n => { const [b, L] = D.SPIS[n]; const x = new Spi(this, n, b, L); this.spis[n] = x; this.spiAt[b] = x; });
+    this.adcs = {}; this.adcAt = {}; Object.keys(D.ADCS).forEach(n => { const [b, L] = D.ADCS[n]; const x = new Adc(this, n, b, L); this.adcs[n] = x; this.adcAt[b] = x; });
+    this.evsys = new Evsys(this); this.analog = null;
     this.devs = []; this.activeU = []; this.uNext = Infinity; this.cprog = null; this.crt = null;
     this.prog = new Array(0); this.flash = new Uint16Array(FLASH_WORDS).fill(0xFFFF); this.used = new Uint8Array(FLASH_WORDS);
     this.dataLabels = new Map(); this.bp = null; this.hooks = null;
@@ -1774,6 +1972,7 @@ class Sim {
     Object.values(this.tcs).forEach(t => t.reset());
     Object.values(this.usarts).forEach(u => u.reset());
     Object.values(this.spis).forEach(u => u.reset());
+    Object.values(this.adcs).forEach(u => u.reset()); this.evsys.reset();
     this.refreshTimers(); this.refreshUsarts();
     this.devs.forEach(d => d.reset());
     this.crt = this.cprog ? new XL.C.Runtime(this, this.cprog) : null;
@@ -1786,6 +1985,7 @@ class Sim {
     if (!this.usarts || !this.spis) return; const a = [];
     for (const k in this.usarts) if (this.usarts[k].next < Infinity) a.push(this.usarts[k]);
     for (const k in this.spis) if (this.spis[k].next < Infinity) a.push(this.spis[k]);
+    if (this.adcs) for (const k in this.adcs) if (this.adcs[k].next < Infinity) a.push(this.adcs[k]);
     for (const d of this.devs) if (d.next < Infinity) a.push(d);
     this.activeU = a; this.uNext = a.reduce((m, u) => Math.min(m, u.next), Infinity);
   }
@@ -1821,6 +2021,8 @@ class Sim {
     if (a < 0x10) return this.io[a];
     if (a < 0x20) { const p = this.vport((a - 0x10) >> 2); return p ? p.read([0, 4, 8, 12][(a - 0x10) & 3]) : 0; }
     if (a >= 0x600 && a < 0x800) { const p = this.portAt[(a - 0x600) >> 5]; return p ? p.read(a & 0x1F) : 0; }
+    if (a >= 0x180 && a < 0x192) return this.evsys.read(a - 0x180);
+    if (a >= 0x200 && a < 0x280) return this.adcAt[a & ~0x3F].read(a & 0x3F);
     if (a >= 0x800 && a < 0xC00) { const u = this.usartAt[a & ~0x0F]; if (u) return u.read(a & 0x0F); const sp = this.spiAt[a & ~0x07]; if (sp && (a & 7) < 4) return sp.read(a & 3); const t = this.tcAt[(a - 0x800) >> 6]; return t ? t.read(a & 0x3F) : 0; }
     switch (a) {
       case 0x34: return this.inst <= this.ccpUntil ? 1 : 0;
@@ -1837,6 +2039,8 @@ class Sim {
     if (a < 0x10) { this.io[a] = v; return; }
     if (a < 0x20) { const p = this.vport((a - 0x10) >> 2); if (p) p.write([0, 4, 8, 12][(a - 0x10) & 3], v); return; }
     if (a >= 0x600 && a < 0x800) { const p = this.portAt[(a - 0x600) >> 5]; if (p) p.write(a & 0x1F, v); return; }
+    if (a >= 0x180 && a < 0x192) { this.evsys.write(a - 0x180, v); return; }
+    if (a >= 0x200 && a < 0x280) { this.adcAt[a & ~0x3F].write(a & 0x3F, v); return; }
     if (a >= 0x800 && a < 0xC00) { const u = this.usartAt[a & ~0x0F]; if (u) { u.write(a & 0x0F, v); return; } const sp = this.spiAt[a & ~0x07]; if (sp && (a & 7) < 4) { sp.write(a & 3, v); return; } const t = this.tcAt[(a - 0x800) >> 6]; if (t) t.write(a & 0x3F, v); return; }
     switch (a) {
       case 0x34: if (v === 0xD8) this.ccpUntil = this.inst + 4; else if (v === 0x9D) this.ccpUntil = this.inst + 4; return;
@@ -1923,6 +2127,7 @@ class Sim {
       if (u.status & 0x20) cand(u.ctrla & 3, u.vDRE, () => {}, u.name + '_DRE');
     }
     for (const k in this.spis) { const sp = this.spis[k]; if (sp.intctrl && (sp.status & 0x80)) cand(sp.intctrl, sp.vect, () => { sp.status &= ~0x80; }, sp.name + '_INT'); }
+    for (const k in this.adcs) { const ad = this.adcs[k]; for (let c = 0; c < 4; c++) { const ch = ad.ch[c]; if (ch.flag && (ch.intctrl & 3)) cand(ch.intctrl & 3, ad.vect[c], () => { ch.flag = 0; }, ad.name + '_CH' + c); } }
     for (const k in this.ports) {
       const p = this.ports[k]; if (p.intctrl) p.levelSense(); if (!p.intctrl || !p.intflags) continue;
       if (p.intflags & 1) cand(p.intctrl & 3, p.vect0, () => { p.intflags &= ~1; }, p.name + '_INT0');
@@ -2113,7 +2318,7 @@ class Sim {
   }
 }
 Sim.PRESC = PRESC; Sim.CLKNAME = CLKNAME;
-XL.Sim = Sim; XL.Port = Port; XL.TC = TC; XL.Usart = Usart; XL.Spi = Spi; XL.SpiDevice = SpiDevice;
+XL.Sim = Sim; XL.Port = Port; XL.TC = TC; XL.Usart = Usart; XL.Spi = Spi; XL.SpiDevice = SpiDevice; XL.Adc = Adc; XL.Evsys = Evsys;
 })(typeof globalThis !== 'undefined' ? (globalThis.XL = globalThis.XL || {}) : (window.XL = window.XL || {}));
 
 /* Devices that sit on a simulated SPI bus: an LSM6DSL-style IMU (registers, SPI read/write
@@ -2218,6 +2423,34 @@ class Imu3 extends XL.SpiDevice {
   onByte(v, idx) { return this.vals[(idx + 1) % 3] & 0xFF; }
 }
 
+
+/* The analog side of the board: which voltage sits on each ADC pin at time t.
+   cfg: { vcc, aref: { A: volts|null, B: volts|null }, cds: { pos:'A1', neg:'A6', light }, gen: { pos:'A4', neg:'A5', wave, freq, amp, offset, gain, bias }, pins: { 'B3': { wave, freq, amp, offset } } } */
+const WAVE = { sine: (x) => Math.sin(2 * Math.PI * x), square: (x) => (x - Math.floor(x)) < 0.5 ? 1 : -1, triangle: (x) => { const f = x - Math.floor(x); return f < 0.5 ? 4 * f - 1 : 3 - 4 * f; }, sawtooth: (x) => 2 * (x - Math.floor(x)) - 1, dc: () => 0 };
+class AnalogBoard {
+  constructor(cfg) { this.set(cfg || {}); }
+  set(cfg) {
+    this.vcc = cfg.vcc || 3.3; this.arefs = Object.assign({ A: null, B: 2.5 }, cfg.aref || {});
+    this.cds = cfg.cds === null ? null : Object.assign({ pos: 'A1', neg: 'A6', light: 0.6, bias: 0.3, ripple: 0.015 }, cfg.cds || {});
+    this.gen = cfg.gen === null ? null : Object.assign({ pos: 'A4', neg: 'A5', wave: 'sine', freq: 5, amp: 2, offset: 0, gain: 0.4, bias: 1.0 }, cfg.gen || {});
+    this.pins = Object.assign({}, cfg.pins || {});
+  }
+  aref(L) { return this.arefs[L]; }
+  cdsV(t) { const c = this.cds; return 0.15 + 1.6 * c.light + c.ripple * c.light * Math.sin(2 * Math.PI * 120 * t); }
+  genV(t) { const g = this.gen; return g.gain * (g.offset + g.amp * (WAVE[g.wave] || WAVE.sine)(g.freq * t)); }
+  v(L, i, t) {
+    const k = L + i;
+    if (this.pins[k]) { const p = this.pins[k]; return (p.offset || 0) + (p.amp || 0) * (WAVE[p.wave] || WAVE.dc)((p.freq || 0) * t); }
+    if (this.cds) { if (k === this.cds.pos) return this.cds.bias + this.cdsV(t); if (k === this.cds.neg) return this.cds.bias; }
+    if (this.gen) { if (k === this.gen.pos) return this.gen.bias + this.genV(t); if (k === this.gen.neg) return this.gen.bias; }
+    if (L === 'A' && i === 0 && this.arefs.A != null) return this.arefs.A;
+    if (L === 'B' && i === 0 && this.arefs.B != null) return this.arefs.B;
+    return 0;
+  }
+  /* the differential voltage a correct measurement of a named source should see */
+  source(name, t) { return name === 'cds' ? this.cdsV(t) : name === 'gen' ? this.genV(t) : 0; }
+}
+XL.AnalogBoard = AnalogBoard; XL.WAVE = WAVE;
 XL.Lsm6 = Lsm6; XL.Imu3 = Imu3; XL.LSM = { REG, RNAME, ODR, FSXL, SENS, FSG };
 })(typeof globalThis !== 'undefined' ? (globalThis.XL = globalThis.XL || {}) : (window.XL = window.XL || {}));
 
@@ -2855,11 +3088,13 @@ const SRAM0 = 0x2000, SRAM1 = 0x3FFF;
 C.T = T; C.TD = TD; C.norm = norm;
 
 /* ---------------- register model (avr/io.h) ---------------- */
-const MODS = new Set(['CPU', 'CLK', 'OSC', 'PMIC', 'PORTCFG', 'VPORT0', 'VPORT1', 'VPORT2', 'VPORT3'].concat(Object.keys(D.PORTS).map(p => 'PORT' + p), Object.keys(D.TCS), Object.keys(D.USARTS), Object.keys(D.SPIS)));
+const MODS = new Set(['CPU', 'CLK', 'OSC', 'PMIC', 'PORTCFG', 'EVSYS', 'ADCA', 'ADCB', 'VPORT0', 'VPORT1', 'VPORT2', 'VPORT3'].concat(Object.keys(D.PORTS).map(p => 'PORT' + p), Object.keys(D.TCS), Object.keys(D.USARTS), Object.keys(D.SPIS)));
 const W16 = new Set(); Object.keys(D.TCS).forEach(t => D.TC_REGS.forEach(r => { if (r[3]) W16.add(t + '_' + r[0]); }));
 W16.add('CPU_SP');
 function regLookup(name) {
   if (name === 'CPU_SP' || name === 'SP') return { addr: 0x3D, size: 2, name };
+  const m16 = /^(ADC[AB])_(CAL|CMP|CH[0-3]RES|CH[0-3]_RES)$/.exec(name);
+  if (m16) { const d = D.SYM[(name + 'L').toUpperCase()]; if (d) return { addr: d.v, size: 2, name }; }
   const d = D.SYM[name.toUpperCase()]; if (!d || d.n !== name || d.k !== 'io') return null;
   return { addr: d.v, size: W16.has(name) ? 2 : 1, name };
 }
@@ -3246,10 +3481,17 @@ class Compiler {
       case 'id': return this.ident(n);
       case 'member': {
         if (n.arrow) this.err('-> needs a pointer to a struct; structs are not supported here', n);
+        if (n.a.k === 'member' && n.a.a.k === 'id' && /^ADC[AB]$/.test(n.a.a.name) && /^CH[0-3]$/.test(n.a.m) && !this.scopeLookup(n.a.a.name)) {
+          if (!this.feat.has('io')) this.err('"' + n.a.a.name + '" is undeclared', n.a.a, 'Register names come from <avr/io.h> — add #include <avr/io.h>.');
+          const nm = n.a.a.name + '_' + n.a.m + '_' + n.m; const r = regLookup(nm);
+          if (!r) this.err(n.a.a.name + '.' + n.a.m + ' has no register "' + n.m + '"', n.mtok || n, 'ADC channel registers: CTRL, MUXCTRL, INTCTRL, INTFLAGS, RES (16-bit), RESL, RESH, SCAN.');
+          return this.regE(r, n.a.a.name + '.' + n.a.m + '.' + n.m);
+        }
         if (n.a.k === 'id' && MODS.has(n.a.name) && !this.scopeLookup(n.a.name)) {
           if (!this.feat.has('io')) this.err('"' + n.a.name + '" is undeclared', n.a, 'Register names come from <avr/io.h> — add #include <avr/io.h>.');
           const mod = n.a.name, m = n.m; let r = regLookup(mod + '_' + m);
           if (!r) { const mm = /^(CNT|PER|CC[ABCD]|PERBUF|CC[ABCD]BUF)([LH])$/.exec(m); const b = mm && regLookup(mod + '_' + mm[1]); if (b && b.size === 2) r = { addr: b.addr + (mm[2] === 'H' ? 1 : 0), size: 1, name: mod + '.' + m }; }
+          if (!r && /^ADC[AB]$/.test(mod) && /^CH[0-3]$/.test(m)) this.err(mod + '.' + m + ' is a channel block — use a register inside it, e.g. ' + mod + '.' + m + '.CTRL', n.mtok || n);
           if (!r) { const cand = D.names().filter(x => x.startsWith(mod + '_')).map(x => x.slice(mod.length + 1)); const near = cand.find(x => x.toUpperCase() === m.toUpperCase());
             this.err(mod + ' has no register "' + m + '"', n.mtok || n, near ? 'Did you mean ' + mod + '.' + near + '?' : cand.length ? 'Its registers include ' + cand.slice(0, 8).join(', ') + '.' : undefined); }
           return this.regE(Object.assign({}, r, { name: r.name.indexOf('.') < 0 ? r.name : mod + '_' + m }), mod + '.' + m);
@@ -3317,6 +3559,8 @@ class Compiler {
     if (k !== null) { if (!this.feat.has('io')) this.err('"' + name + '" is undeclared', n, 'Bit masks and group configurations come from <avr/io.h> — add #include <avr/io.h>.'); const t = k > 0x7FFF ? T.long : T.int; return { cnst: true, c: k, t, f: () => k }; }
     if (/_vect$/.test(name)) this.err('"' + name + '" can only be used inside ISR( )', n);
     if (MODS.has(name)) this.err('"' + name + '" is a register block — use a member, e.g. ' + name + '.' + (name.startsWith('PORT') ? 'DIRSET' : name.startsWith('SPI') ? 'CTRL' : name.startsWith('TC') ? 'CTRLA' : name.startsWith('USART') ? 'DATA' : 'CTRL'), n);
+    const ALIAS = { ADC_CONVMODE_bm: 'ADC_CONMODE_bm', ADC_CH_IF_bm: 'ADC_CH_CHIF_bm', ADC_CH_CHIF_bp: null, ADC_SIGNED_bm: 'ADC_CONMODE_bm', EVSYS_CHMUX_TCC0OVF_gc: 'EVSYS_CHMUX_TCC0_OVF_gc', ADC_REFSEL_VCC_gc: 'ADC_REFSEL_INTVCC_gc', ADC_REFSEL_AREFB_bm: 'ADC_REFSEL_AREFB_gc' };
+    if (ALIAS[name]) this.err('"' + name + '" is undeclared', n, 'The header spells it ' + ALIAS[name] + '.');
     const up = name.toUpperCase(); const d = D.SYM[up];
     if (d) this.err('"' + name + '" is undeclared', n, 'C is case-sensitive: the register/constant is spelled ' + d.n + '.');
     const m = /^(TC[C-F][01])_(PER|CNT|CC[A-D])([LH])$/.exec(name);
@@ -5554,11 +5798,11 @@ XL.addProblem({
       { id: 'dord', label: '(c) Data order (DORD)', type: 'select', options: [['', 'choose…'], ['0', 'DORD = 0: MSB first'], ['1', 'DORD = 1: LSB first']] },
       { id: 'ctrl', label: '(d) ' + S.spi + '_CTRL', type: 'text', placeholder: '0x..' },
       { id: 'hz', label: '(e) Actual SCK frequency', type: 'text', placeholder: 'e.g. 250 kHz' }];
-    V.hints = ['SCK = f<sub>clk</sub> / (4, 16, 64 or 128), and CLK2X halves that divider. The mode number is CPOL·2 + CPHA: CPOL is the idle level; CPHA = 0 means data is <i>sampled</i> on the first (leading) edge, CPHA = 1 means it is <i>set up</i> on the leading edge.',
+    V.hints = ['The PRESCALER bits give SCK = f<sub>clk</sub> / 4, 16, 64 or 128. CLK2X doubles the SPI clock, i.e. halves that divider — so the dividers you can get are 2, 4, 8, 16, 32, 64 and 128. The mode number is CPOL·2 + CPHA: CPOL is the idle level; CPHA = 0 means data is <i>sampled</i> on the first (leading) edge, CPHA = 1 means it is <i>set up</i> on the leading edge.',
       'CTRL = CLK2X (bit 7) | ENABLE (bit 6) | DORD (bit 5) | MASTER (bit 4) | MODE[1:0] (bits 3:2) | PRESCALER[1:0]. Here ÷' + div + ' is ' + (ENC[div][0][0] ? 'CLK2X + ' : '') + PRESC_GC[ENC[div][0][1]].replace('SPI_PRESCALER_', '').replace('_gc', '') + '.'];
     V.worked = () => {
       const enc = ENC[div][0]; const c = ctrlOf(div, S.mode, S.lsb, enc);
-      let h = '<p><b>(a)</b> ' + (S.sck.exact ? fmtHz(S.f) + ' / ' + fmtHz(S.sck.exact) + ' = <b>' + div + '</b>.' : 'Dividers that land in the allowed range: ' + S.divs.map(d => '÷' + d + ' → ' + fmtHz(S.f / d)).join(', ') + '. The fastest is <b>÷' + div + '</b>' + (S.divs.length > 1 ? ' (any of these is accepted)' : '') + '.') + ' ÷' + div + ' = ' + (enc[0] ? 'CLK2X with ' : '') + '<code>' + PRESC_GC[enc[1]] + '</code>' + (div === 64 ? ' (or CLK2X with DIV128)' : '') + '.</p>';
+      let h = '<p><b>(a)</b> ' + (S.sck.exact ? fmtHz(S.f) + ' / ' + fmtHz(S.sck.exact) + ' = <b>' + div + '</b>.' : 'Dividers that land in the allowed range: ' + S.divs.map(d => '÷' + d + ' → ' + fmtHz(S.f / d)).join(', ') + '. The fastest is <b>÷' + div + '</b>' + (S.divs.length > 1 ? ' (any of these is accepted)' : '') + '.') + (enc[0] ? ' The prescaler alone can only divide by 4, 16, 64 or 128 — there is no ÷' + div + '. Setting CLK2X makes the SPI clock run twice as fast, which turns <code>' + PRESC_GC[enc[1]] + '</code> (÷' + 2 * div + ') into ÷' + div + ': SCK = 2 × ' + fmtHz(S.f) + ' / ' + 2 * div + ' = ' + fmtHz(S.f / div) + '. The system clock itself never changes.' : ' ÷' + div + ' is <code>' + PRESC_GC[enc[1]] + '</code> with CLK2X = 0.') + (div === 64 ? ' (CLK2X with DIV128 also gives ÷64.)' : '') + '</p>';
       h += '<p><b>(b)</b> Mode ' + S.mode + ': ' + MODE_TXT[S.mode] + '.</p><p><b>(c)</b> DORD = ' + S.lsb + ' (' + (S.lsb ? 'LSB' : 'MSB') + ' first).</p>';
       h += '<p><b>(d)</b> <code>' + ctrlExpr(div, S.mode, S.lsb, enc) + '</code> = ' + [enc[0] ? 'CLK2X 0x80' : null, 'ENABLE 0x40', S.lsb ? 'DORD 0x20' : null, 'MASTER 0x10', 'MODE ' + hx(S.mode << 2), 'PRESCALER ' + hx(enc[1])].filter(Boolean).join(' + ') + ' = <b>' + hx(c) + '</b>.</p>';
       return h + '<p><b>(e)</b> ' + fmtHz(S.f) + ' / ' + div + ' = <b>' + fmtHz(S.f / div) + '</b>.</p>';
@@ -6250,6 +6494,576 @@ XL.addProblem({
 XL.CC = CC;
 })(typeof globalThis !== 'undefined' ? (globalThis.XL = globalThis.XL || {}) : (window.XL = window.XL || {}));
 
+/* ADC / event-system problems — part 1: shared helpers and answer problems
+   (line through two points, ADC transfer functions, successive approximation, concepts, timer → event → ADC settings). */
+(function (XL) {
+'use strict';
+const G = XL.G, { esc, pass, fail, fmtHz, fmtT } = G;
+const hx = XL.defs.hx;
+const fmtN = (n, d) => (+(+n).toFixed(d === undefined ? 4 : d)).toLocaleString('en-US', { maximumFractionDigits: d === undefined ? 4 : d });
+const pf = (s) => { s = String(s === undefined || s === null ? '' : s).trim().replace(/\s*(v|volts?)$/i, '').replace(/,/g, '').replace(/−/g, '-'); return /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(s) ? parseFloat(s) : NaN; };
+const close = (a, b, rel, abs) => !isNaN(a) && Math.abs(a - b) <= Math.max(abs || 0, Math.abs(b) * (rel || 0));
+const F = (id, label, ph) => ({ id, label, type: 'text', placeholder: ph || '' });
+const field = (t, f) => Object.assign(t, { field: f });
+/* the bench's analog wiring (the OOTB Analog Backpack as modelled here — check your schematic) */
+const BENCH = { cds: { pos: 1, neg: 6, name: 'CdS cell (CDS+ → PA1, CDS− → PA6)' }, j3: { pos: 4, neg: 5, name: 'J3 analog input (→ PA4, reference → PA5), gain 0.4' }, arefB: 2.5 };
+const twos = (v, n) => (v < 0 ? v + (1 << n) : v).toString(2).padStart(n, '0');
+const fromTwos = (u, n) => (u & (1 << (n - 1))) ? u - (1 << n) : u;
+XL.ADCX = { BENCH, pf, close, fmtN, twos, fromTwos };
+
+/* ------------------------------------------------------------------ */
+XL.addProblem({
+  id: 'adc-line', cat: 'ADC', title: 'The line through two points', level: 1, kind: 'answer',
+  blurb: 'y = ax + b — the ADC transfer function',
+  gen(rng, seed) {
+    let p1, p2;
+    if (seed === 1) { p1 = [-3, -10]; p2 = [7, 40]; }
+    else { do { p1 = [rng.int(-20, 5), rng.int(-30, 10)]; p2 = [rng.int(6, 40), rng.int(-10, 60)]; } while (p2[0] === p1[0] || p2[1] === p1[1]); }
+    const a = (p2[1] - p1[1]) / (p2[0] - p1[0]), b = p1[1] - a * p1[0];
+    const V = { p1, p2, a, b, summary: '(' + p1.join(', ') + ') and (' + p2.join(', ') + ')' };
+    V.statement = '<p>In order to interpret and convert ADC values to voltages with <b>asymmetrical</b> references (|V<sub>refH</sub>| ≠ |V<sub>refL</sub>|), derive the equation of the line in the x-y plane that contains the points <b>(' + p1.join(', ') + ')</b> and <b>(' + p2.join(', ') + ')</b>. Write it as y = f(x) = ax + b.</p>';
+    V.form = [F('a', 'a (slope)', 'e.g. 2.5'), F('b', 'b (y-intercept)', 'e.g. -4')];
+    V.hints = ['Slope = rise / run between the two points. Then put either point into y = ax + b to find b.', 'a = (' + p2[1] + ' − (' + p1[1] + ')) / (' + p2[0] + ' − (' + p1[0] + ')). b = ' + p1[1] + ' − a · (' + p1[0] + ').'];
+    V.worked = () => '<p>a = (' + p2[1] + ' − ' + p1[1] + ') / (' + p2[0] + ' − ' + p1[0] + ') = ' + (p2[1] - p1[1]) + ' / ' + (p2[0] - p1[0]) + ' = <b>' + fmtN(a) + '</b>.</p><p>b = y₁ − a·x₁ = ' + p1[1] + ' − (' + fmtN(a) + ')(' + p1[0] + ') = <b>' + fmtN(b) + '</b>.</p><p>So <b>y = ' + fmtN(a) + 'x ' + (b < 0 ? '− ' + fmtN(-b) : '+ ' + fmtN(b)) + '</b>. With an ADC, x is the digital value and y the voltage (or the other way round), and the two points are the end codes paired with V<sub>refL</sub> and V<sub>refH</sub>.</p>';
+    return V;
+  },
+  grade(V, ans) {
+    const a = pf(ans.a), b = pf(ans.b), out = [];
+    out.push(field(close(a, V.a, 0.002, 0.001) ? pass('a = ' + fmtN(a)) : fail('Slope a', isNaN(a) ? 'Enter a number.' : 'Rise/run = ' + (V.p2[1] - V.p1[1]) + ' / ' + (V.p2[0] - V.p1[0]) + ' = ' + fmtN(V.a) + '.' + (close(a, 1 / V.a, 0.002) ? ' You divided run by rise.' : '')), 'a'));
+    out.push(field(close(b, V.b, 0.002, 0.001) ? pass('b = ' + fmtN(b)) : fail('Intercept b', isNaN(b) ? 'Enter a number.' : 'b = y₁ − a·x₁ = ' + fmtN(V.b) + '.'), 'b'));
+    return out;
+  },
+});
+
+/* ------------------------------------------------------------------ */
+XL.addProblem({
+  id: 'adc-transfer', cat: 'ADC', title: 'ADC value ↔ voltage', level: 2, kind: 'answer',
+  blurb: 'Signed n-bit, asymmetric references',
+  gen(rng, seed) {
+    let n, lo, hi, code, v2, sgn = true, hexGiven = true;
+    if (seed === 1) { n = 6; lo = -2.0; hi = 4.3; code = 0x37; v2 = 3.7; }
+    else if (seed === 2) { n = 12; lo = -3; hi = 7; code = 0x131; v2 = 5.5; }
+    else { n = rng.pick([6, 8, 10, 12]); sgn = rng.bool(0.75); lo = sgn ? -rng.pick([1, 2, 2.5, 3, 5]) : rng.pick([0, 0, 0.5]); hi = rng.pick([2.5, 3.3, 4.3, 5, 7]); code = rng.int(0, (1 << n) - 1); v2 = rng.bool(0.8) ? +(lo + (hi - lo) * (0.1 + 0.8 * rng.f())).toFixed(2) : +(hi + 0.3).toFixed(1); hexGiven = rng.bool(); }
+    const min = sgn ? -(1 << (n - 1)) : 0, max = sgn ? (1 << (n - 1)) - 1 : (1 << n) - 1;
+    const a = (hi - lo) / (max - min), b = lo - a * min; const dv = sgn ? fromTwos(code, n) : code; const v = a * dv + b;
+    const valid = v2 >= lo && v2 <= hi; const c2 = valid ? Math.round((v2 - b) / a) : null; const c2f = valid ? Math.floor((v2 - b) / a + 1e-9) : null;
+    const V = { n, lo, hi, sgn, min, max, a, b, code, dv, v, v2, valid, c2, c2f, summary: n + '-bit ' + (sgn ? 'signed' : 'unsigned') + ', ' + lo + ' V … ' + hi + ' V' };
+    const codeTxt = hexGiven ? hx(code, Math.ceil(n / 4)) + ' = ' + code.toString(2).padStart(n, '0') + '₂' : code.toString(2).padStart(n, '0') + '₂';
+    V.statement = '<p>A (non-XMEGA) ADC is <b>' + (sgn ? 'signed' : 'unsigned') + '</b>, uses <b>' + n + ' bits</b> and has an analog input range from <b>' + lo + ' V</b> to <b>' + hi + ' V</b> (V<sub>refL</sub> and V<sub>refH</sub>). ' + (sgn ? 'Its codes run from ' + min + ' to +' + max + ' (two’s complement).' : 'Its codes run from 0 to ' + max + '.') + '</p><ol type="a">' +
+      '<li>Derive v = f(ADC) = a·ADC + b, where ADC is the digital value in decimal.</li><li>What is the voltage if the ADC returns <b>' + codeTxt + '</b>?</li><li>If v = <b>' + v2 + ' V</b> is a valid input, what is the captured ADC value in decimal and binary? If it is not valid, write <i>not valid</i>.</li></ol>';
+    V.form = [F('a', '(a) a (V per step)'), F('b', '(a) b (V)'), F('v', '(b) v (V)'), F('c10', '(c) ADC₁₀', 'or not valid'), F('c2', '(c) ADC₂', n + ' bits, or not valid')];
+    V.hints = ['The lowest code goes with V<sub>refL</sub> and the highest with V<sub>refH</sub>: two points, one line. ' + (sgn ? 'Read the given code as an ' + n + '-bit two’s complement number first.' : ''),
+      'Points: (' + min + ', ' + lo + ') and (' + max + ', ' + hi + '). a = ' + fmtN(hi - lo) + ' / ' + (max - min) + '. For (c), solve ADC = (v − b) / a and round to a whole code' + (sgn ? ', then write it in ' + n + '-bit two’s complement.' : '.')];
+    V.worked = () => '<p><b>(a)</b> Points (' + min + ', ' + lo + ') and (' + max + ', ' + hi + '): a = (' + hi + ' − (' + lo + ')) / (' + max + ' − (' + min + ')) = ' + fmtN(hi - lo) + ' / ' + (max - min) + ' = <b>' + fmtN(a, 6) + ' V</b>; b = ' + lo + ' − a·(' + min + ') = <b>' + fmtN(b, 6) + ' V</b>.</p>' +
+      '<p><b>(b)</b> ' + codeTxt + (sgn ? ' as ' + n + '-bit two’s complement = <b>' + dv + '</b>' : ' = ' + dv) + '; v = ' + fmtN(a, 6) + '·(' + dv + ') + ' + fmtN(b, 6) + ' = <b>' + fmtN(v, 4) + ' V</b>.</p>' +
+      '<p><b>(c)</b> ' + (valid ? 'ADC = (' + v2 + ' − ' + fmtN(b, 6) + ') / ' + fmtN(a, 6) + ' = ' + fmtN((v2 - b) / a, 3) + ' → <b>' + c2 + '</b> = <b>' + twos(c2, n) + '₂</b>.' : v2 + ' V is outside ' + lo + ' … ' + hi + ' V: <b>not valid</b>.') + '</p>';
+    return V;
+  },
+  grade(V, ans) {
+    const out = [], a = pf(ans.a), b = pf(ans.b), v = pf(ans.v);
+    const alt = (V.hi - V.lo) / (V.max - V.min + 1);
+    let w = 'Using (' + V.min + ', ' + V.lo + ') and (' + V.max + ', ' + V.hi + '): a = ' + fmtN(V.a, 6) + '.'; if (close(a, alt, 0.001)) w += ' You divided by ' + (V.max - V.min + 1) + ' (2ⁿ) — the line through the two end codes spans ' + (V.max - V.min) + ' steps.';
+    out.push(field(close(a, V.a, 0.003) ? pass('(a) a = ' + fmtN(a, 6)) : fail('(a) Slope a', isNaN(a) ? 'Enter a number.' : w), 'a'));
+    out.push(field(close(b, V.b, 0.003, 0.002) ? pass('(a) b = ' + fmtN(b, 6)) : fail('(a) Intercept b', isNaN(b) ? 'Enter a number.' : 'b = V<sub>refL</sub> − a·(lowest code) = ' + fmtN(V.b, 6) + ' V.'), 'b'));
+    let wv = V.code.toString(2).padStart(V.n, '0') + '₂ is ' + V.dv + ' in decimal; v = ' + fmtN(V.v, 4) + ' V.'; if (V.sgn && close(v, V.a * V.code + V.b, 0.003, 0.002) && V.dv !== V.code) wv += ' You read the code as unsigned (' + V.code + ') — its top bit is set, so it is negative.';
+    out.push(field(close(v, V.v, 0.003, 0.003) ? pass('(b) v = ' + fmtN(v, 4) + ' V') : fail('(b) Voltage', isNaN(v) ? 'Enter a voltage.' : wv), 'v'));
+    const nv = (x) => /^\s*(not\s*valid|invalid|n\/?v|none)\s*$/i.test(String(x || ''));
+    if (!V.valid) {
+      out.push(field(nv(ans.c10) ? pass('(c) not valid') : fail('(c) ADC₁₀', V.v2 + ' V is outside ' + V.lo + ' … ' + V.hi + ' V, so it is not a valid input.'), 'c10'));
+      out.push(field(nv(ans.c2) ? pass('(c) not valid') : fail('(c) ADC₂', 'Not valid — the input is out of range.'), 'c2'));
+    } else {
+      const c10 = pf(ans.c10); const ok10 = c10 === V.c2 || c10 === V.c2f;
+      out.push(field(ok10 ? pass('(c) ADC = ' + c10) : fail('(c) ADC₁₀', nv(ans.c10) ? V.v2 + ' V is inside the range, so it is valid.' : '(' + V.v2 + ' − b) / a = ' + fmtN((V.v2 - V.b) / V.a, 3) + ' → ' + V.c2 + '.'), 'c10'));
+      const bs = String(ans.c2 || '').replace(/[₂_\s]|^0b/gi, ''); const okb = /^[01]+$/.test(bs) && bs.length <= V.n && [V.c2, V.c2f].some(c => parseInt(bs, 2) === (c < 0 ? c + (1 << V.n) : c) && (c >= 0 || bs.length === V.n));
+      out.push(field(okb ? pass('(c) ' + bs + '₂') : fail('(c) ADC₂', 'Write the code in ' + V.n + '-bit ' + (V.sgn ? 'two’s complement' : 'binary') + ': ' + twos(V.c2, V.n) + '₂.'), 'c2'));
+    }
+    return out;
+  },
+});
+
+/* ------------------------------------------------------------------ */
+XL.addProblem({
+  id: 'adc-sar', cat: 'ADC', title: 'Successive approximation, step by step', level: 2, kind: 'answer',
+  blurb: 'First guess, each trial, final code',
+  gen(rng, seed) {
+    const one = seed === 1; const n = one ? 6 : rng.pick([4, 5, 6, 8]); const vref = one ? 3.2 : rng.pick([1, 2.5, 3.2, 3.3, 5]);
+    const vin = one ? 1.37 : +(vref * (0.05 + 0.9 * rng.f())).toFixed(3);
+    const lsb = vref / (1 << n); const trials = []; let code = 0;
+    for (let b = n - 1; b >= 0; b--) { const g = code | (1 << b); const keep = vin >= g * lsb; trials.push({ g, v: g * lsb, keep }); if (keep) code = g; }
+    const V = { n, vref, vin, lsb, trials, code, summary: n + '-bit · V<sub>ref</sub> ' + vref + ' V · V<sub>in</sub> ' + vin + ' V' };
+    const bn = (x) => x.toString(2).padStart(n, '0');
+    V.statement = '<p>An <b>' + n + '-bit unsigned</b> successive-approximation ADC has a 0 … ' + vref + ' V range, so one step is ' + fmtN(lsb, 5) + ' V and code k stands for k × ' + fmtN(lsb, 5) + ' V. The input is <b>' + vin + ' V</b>. A bit stays 1 when V<sub>in</sub> ≥ the trial’s voltage.</p><ol type="a">' +
+      '<li>What, precisely, is the first guess? (binary)</li><li>List every trial value the converter tries, in order (binary, separated by spaces).</li><li>What is the final result? (binary)</li></ol>';
+    V.form = [F('g1', '(a) First guess', n + ' bits'), F('tr', '(b) Trials in order', bn(1 << (n - 1)) + ' …'), F('fin', '(c) Result', n + ' bits')];
+    V.hints = ['The first guess sets only the most significant bit: half of full scale. The internal DAC turns the guess into a voltage and the comparator compares it with the input.',
+      'Keep the bit if V<sub>in</sub> ≥ guess × LSB, otherwise clear it; then set the next lower bit and compare again — ' + n + ' trials in all.'];
+    V.worked = () => '<p><b>(a)</b> <b>' + bn(1 << (n - 1)) + '₂</b> — only the MSB set, i.e. half of full scale (' + fmtN(vref / 2, 4) + ' V). The DAC converts it to a voltage, the comparator checks V<sub>in</sub> against it: if V<sub>in</sub> is at least that voltage the MSB stays 1, otherwise it is cleared, and the next bit is tried.</p>' +
+      '<table class="mini-t"><tr><th>Trial</th><th>Voltage</th><th>V<sub>in</sub> ≥ ?</th></tr>' + trials.map(t => '<tr><td><code>' + bn(t.g) + '</code></td><td>' + fmtN(t.v, 4) + ' V</td><td>' + (t.keep ? 'yes — keep' : 'no — clear') + '</td></tr>').join('') + '</table>' +
+      '<p><b>(c)</b> <b>' + bn(code) + '₂</b> = ' + code + ' (' + fmtN(code * lsb, 4) + ' V).</p>';
+    return V;
+  },
+  grade(V, ans) {
+    const out = [], n = V.n, bn = (x) => x.toString(2).padStart(n, '0'), clean = (s) => String(s || '').replace(/[₂_]|0b/gi, '').trim();
+    const g1 = clean(ans.g1); out.push(field(g1 === bn(1 << (n - 1)) ? pass('(a) ' + g1) : fail('(a) First guess', 'Only the MSB is set first: ' + bn(1 << (n - 1)) + '₂ (half of full scale).' + (g1 && /^[01]+$/.test(g1) && parseInt(g1, 2) === (1 << n) - 1 ? ' All ones is the top of the range, not the first guess.' : '')), 'g1'));
+    const tr = clean(ans.tr).split(/[\s,;→>-]+/).filter(Boolean); const want = V.trials.map(t => bn(t.g));
+    const firstBad = want.findIndex((w, i) => tr[i] !== w);
+    out.push(field(tr.length === n && firstBad < 0 ? pass('(b) ' + n + ' trials correct') : fail('(b) Trials', 'Expected ' + want.join(' ') + '.' + (firstBad >= 0 && tr[firstBad] ? ' Trial ' + (firstBad + 1) + ' should be ' + want[firstBad] + ' (previous decision ' + (firstBad ? (V.trials[firstBad - 1].keep ? 'kept' : 'cleared') + ' bit ' + (n - firstBad) : '') + ').' : '')), 'tr'));
+    const fin = clean(ans.fin); out.push(field(fin === bn(V.code) || (fin && /^[01]+$/.test(fin) && parseInt(fin, 2) === V.code) ? pass('(c) ' + bn(V.code)) : fail('(c) Result', bn(V.code) + '₂ = ' + V.code + '.'), 'fin'));
+    return out;
+  },
+});
+
+/* ------------------------------------------------------------------ */
+XL.addProblem({
+  id: 'adc-concepts', cat: 'ADC', title: 'ADC and event-system concepts', level: 1, kind: 'answer',
+  blurb: 'Lab 7 pre-lab questions',
+  gen(rng, seed) {
+    const one = seed === 1; const q = []; const add = (prompt, opts, answer, why) => q.push({ id: 'q' + (q.length + 1), type: 'mc', prompt, options: rng.shuffle(opts), answer, why });
+    const pool = [
+      () => add('Why must the CdS cell be measured with <b>ADCA</b> rather than ADCB?', [['a', 'The CdS cell’s signals are wired to PORTA pins, and ADCA’s inputs are the PORTA pins (ADCB’s are on PORTB)'], ['b', 'ADCB cannot do signed conversions'], ['c', 'ADCA is the only ADC with 12-bit resolution'], ['d', 'ADCB is reserved for the USB interface']], 'a', 'Each XMEGA ADC module converts the pins of its own port: ADCA ↔ PA0–PA7, ADCB ↔ PB0–PB7.'),
+      () => add('With CDS+ on PA1 and CDS− on PA6 (this bench’s wiring), which ADC configuration can measure the voltage across the cell?', [['g', 'Differential with gain (gain 1×): CDS− isn’t ground, so it must be the negative input, and on the XMEGA AU only the gain mode can select PIN4–PIN7 as the negative input'], ['s', 'Single-ended on PA1 — the cell’s other end is ground'], ['d', 'Differential without gain, MUXNEG = PIN6'], ['i', 'Internal input mode']], 'g', 'Differential without gain only offers PIN0–PIN3 (and GND) as the negative input. Single-ended would also measure CDS−’s bias voltage.'),
+      () => add('What is the main benefit of a 12-bit ADC over an 8-bit one, and when might 8 bits still be the better choice?', [['r', '12 bits resolves 16× smaller voltage steps; 8 bits converts faster and each result fits in one byte (less memory, less to transmit) when that precision isn’t needed'], ['s', '12 bits samples 16× faster'], ['v', '12 bits allows a larger input voltage range'], ['n', 'There is no reason to ever use 8 bits']], 'r', 'Same reference, 2¹² vs 2⁸ codes: the LSB shrinks 16×. An 8-bit result is quicker (fewer ADC clocks) and is a single byte.'),
+      () => add('Why use the <b>event system</b> to start ADC conversions at 10 Hz instead of starting them in the timer’s overflow ISR?', [['e', 'The timer overflow is routed to the ADC in hardware: conversions start at exactly the right instant with no CPU work, interrupt latency or jitter'], ['f', 'It makes each conversion faster'], ['i', 'ISRs cannot write ADC registers'], ['p', 'It uses less power because the ADC turns off between events']], 'e', 'An event is a direct hardware signal between peripherals. The CPU only needs to handle the result.'),
+      () => add('Samples are taken at 155 Hz. What is the highest input frequency that can be reproduced without aliasing?', [['n', '77.5 Hz (half the sample rate)'], ['f', '155 Hz'], ['d', '310 Hz'], ['t', 'Any frequency — the ADC is 12-bit']], 'n', 'Nyquist: f<sub>signal</sub> < f<sub>s</sub>/2. A 150 Hz sine sampled at 155 Hz shows up as a 5 Hz wave.'),
+      () => add('In the XMEGA ADC’s <b>signed</b> mode, how are the low and high references related?', [['s', 'V<sub>refL</sub> = −V<sub>refH</sub>: the range is symmetric about 0 V'], ['i', 'They are independent, like some external ADC chips'], ['z', 'V<sub>refL</sub> is always 0 V'], ['h', 'V<sub>refL</sub> = V<sub>refH</sub> / 2']], 's', 'That is why XMEGA conversions are simple: V = RES × V<sub>ref</sub> / 2048 for 12-bit signed. External ADCs with independent references need the two-point line.'),
+      () => add('With 12-bit signed results and a 2.5 V reference, how big is one LSB?', [['a', '2.5 V / 2048 ≈ 1.22 mV'], ['b', '2.5 V / 4096 ≈ 0.61 mV'], ['c', '5 V / 2048 ≈ 2.44 mV'], ['d', '2.5 V / 255 ≈ 9.8 mV']], 'a', 'Signed 12-bit uses 11 bits of magnitude: 2048 steps from 0 V to V<sub>ref</sub>.'),
+      () => add('How is a channel’s conversion-complete flag (CHIF) cleared?', [['w', 'By writing a 1 to it (ADCA.CH0.INTFLAGS = ADC_CH_CHIF_bm), or automatically when its interrupt vector runs'], ['r', 'By reading the result'], ['z', 'By writing a 0 to it'], ['s', 'By starting the next conversion']], 'w', 'If you poll the flag and forget to clear it, the next "wait for the flag" finishes immediately with the old result.'),
+      () => add('<code>ADCA.EVCTRL = ADC_EVSEL_0123_gc | ADC_EVACT_CH0_gc;</code> means…', [['c', 'event channel 0 (the first of channels 0–3) starts a conversion on ADC channel 0'], ['a', 'any of event channels 0–3 starts all four ADC channels'], ['t', 'ADC channel 0 generates events on channels 0–3'], ['s', 'conversions sweep channels 0–3 continuously']], 'c', 'EVSEL picks the group of event channels, EVACT what they do: CH0 = the first selected event channel triggers ADC channel 0.'),
+      () => add('Which register connects TCC0’s overflow to event channel 0?', [['m', 'EVSYS.CH0MUX = EVSYS_CHMUX_TCC0_OVF_gc'], ['c', 'TCC0.CTRLD = TC_EVSEL_CH0_gc'], ['a', 'ADCA.EVCTRL = TCC0_OVF'], ['p', 'PMIC.CTRL = PMIC_LOLVLEN_bm']], 'm', 'Each event channel has a multiplexer that picks its source; TCC0 OVF is 0xC0.'),
+      () => add('What does <b>free-running</b> mode change?', [['f', 'The ADC keeps converting continuously without being triggered; normal mode converts only when started by software or an event'], ['s', 'It switches to signed results'], ['c', 'It runs the ADC clock without a prescaler'], ['n', 'Nothing unless the event system is used']], 'f', 'Lab 7 uses normal mode so that the timer event decides exactly when each sample is taken.'),
+      () => add('For the voltmeter, why convert the result to a <code>float</code> before printing digits?', [['f', 'V = RES × 2.5 / 2048 has a fractional part; with float you can peel off one decimal digit at a time (int part, ×10, repeat)'], ['s', 'USART can only send floats'], ['p', 'printf needs a float'], ['r', 'The ADC returns a float']], 'f', 'Integers would need scaled fixed-point arithmetic; the lab allows float for these sections (but not sprintf/printf).'),
+    ];
+    const pick = one ? [0, 1, 2, 3, 4] : rng.sample([...pool.keys()], 5);
+    pick.forEach(i => pool[i]());
+    const V = { q, summary: q.length + ' questions' };
+    V.statement = '<p>Questions from the Lab 7 pre-lab and the ADC practice set. (Pin numbers refer to this bench’s model of the OOTB Analog Backpack — check your schematic.)</p>'; V.form = q;
+    V.hints = ['Each ADC belongs to one port; the event system links peripherals without the CPU; Nyquist limits what a sample rate can capture.', 'Think about what is wired where, and what happens if the CPU has to do the triggering.'];
+    V.worked = () => q.map((x, i) => '<p><b>' + (i + 1) + '.</b> <b>' + x.options.find(o => o[0] === x.answer)[1] + '</b><br><span class="muted">' + x.why + '</span></p>').join('');
+    return V;
+  },
+  grade(V, ans) {
+    return V.q.map((x, i) => { const name = 'Q' + (i + 1) + ' · ' + x.prompt.replace(/<[^>]+>/g, '').slice(0, 70) + (x.prompt.length > 70 ? '…' : '');
+      if (!ans[x.id]) return fail(name, 'No answer selected.');
+      return ans[x.id] === x.answer ? pass(name, x.why) : fail(name, 'Correct: <b>' + x.options.find(o => o[0] === x.answer)[1] + '</b>. ' + x.why); });
+  },
+});
+
+/* ------------------------------------------------------------------ */
+const TCS = ['TCC0', 'TCC1', 'TCD0', 'TCE0', 'TCF0'];
+const EVSELS = [[0, '0123'], [1, '1234'], [2, '2345'], [3, '3456'], [4, '4567'], [5, '567'], [6, '67'], [7, '7']];
+XL.addProblem({
+  id: 'evsys-config', cat: 'ADC', title: 'Timer → event channel → ADC', level: 2, kind: 'answer',
+  blurb: 'PER, CHnMUX and EVCTRL values',
+  gen(rng, seed) {
+    const one = seed === 1;
+    const f = one ? 2e6 : rng.pick([2e6, 2e6, 16e6, 32e6]); const rate = one ? 10 : rng.pick([10, 155, 50, 1, 100]);
+    const Ns = [1, 2, 4, 8, 64, 256, 1024].filter(N => f / N / rate <= 65536 && f / N / rate >= 20);
+    const N = one ? 64 : rng.pick(Ns); const per = Math.round(f / N / rate) - 1; const act = f / N / (per + 1);
+    const tc = one ? 'TCC0' : rng.pick(TCS); const ch = one ? 0 : rng.int(0, 7); const mux = XL.defs.EVMUX[tc + '_OVF'];
+    const sel = EVSELS.find(e => e[0] === ch); const evctrl = (sel[0] << 3) | 1;
+    const V = { f, rate, N, per, act, tc, ch, mux, evctrl, sel, summary: tc + ' → event ' + ch + ' → ADCA CH0 · ' + rate + ' Hz' };
+    V.statement = '<p>The peripheral clock is <b>' + fmtHz(f) + '</b>. <b>' + tc + '</b> (prescaler <b>' + N + '</b>) should overflow at <b>' + rate + ' Hz</b>, its overflow should drive <b>event channel ' + ch + '</b>, and that event should start a conversion on <b>ADCA channel 0</b>.</p><ol type="a">' +
+      '<li>What value goes in ' + tc + '.PER?' + (Math.abs(act - rate) > 1e-9 ? ' (closest integer)' : '') + '</li><li>What overflow rate does that give?</li><li>What value is written to <code>EVSYS.CH' + ch + 'MUX</code> (hex)?</li><li>What value is written to <code>ADCA.EVCTRL</code> (hex) so that event channel ' + ch + ' starts CH0? (SWEEP bits 0)</li></ol>';
+    V.form = [F('per', '(a) PER'), F('rate', '(b) Overflow rate', 'e.g. 10 Hz'), F('mux', '(c) EVSYS.CH' + ch + 'MUX', '0x..'), F('ev', '(d) ADCA.EVCTRL', '0x..')];
+    V.hints = ['f<sub>OVF</sub> = f<sub>clk</sub> / (N · (PER + 1)). Event-source codes for timers are 0xC0 + 8·k for overflow (TCC0 = 0xC0, TCC1 = 0xC8, TCD0 = 0xD0, …). EVCTRL = SWEEP[7:6] | EVSEL[5:3] | EVACT[2:0].',
+      'PER = ' + fmtHz(f) + ' / (' + N + ' · ' + rate + ' Hz) − 1. EVSEL must make channel ' + ch + ' the <i>first</i> selected event channel (EVSEL_' + sel[1] + ' = ' + sel[0] + ' in bits 5:3), and EVACT_CH0 = 1.'];
+    V.worked = () => '<p><b>(a)</b> PER = ' + fmtHz(f) + ' / (' + N + ' × ' + rate + ' Hz) − 1 = ' + fmtN(f / N / rate - 1, 2) + ' → <b>' + per + '</b>.</p><p><b>(b)</b> ' + fmtHz(f) + ' / (' + N + ' × ' + (per + 1) + ') = <b>' + fmtHz(act) + '</b>' + (Math.abs(act - rate) > 1e-9 ? ' (' + fmtN((act / rate - 1) * 100, 3) + ' % off)' : '') + '.</p>' +
+      '<p><b>(c)</b> <code>EVSYS_CHMUX_' + tc + '_OVF_gc</code> = <b>' + hx(mux) + '</b>.</p><p><b>(d)</b> <code>ADC_EVSEL_' + sel[1] + '_gc | ADC_EVACT_CH0_gc</code> = (' + sel[0] + ' << 3) | 1 = <b>' + hx(evctrl) + '</b>.</p>';
+    return V;
+  },
+  grade(V, ans) {
+    const out = [], per = G.num(ans.per), rate = pf(String(ans.rate || '').replace(/\s*hz$/i, '')), mux = G.num(ans.mux), ev = G.num(ans.ev);
+    const okPer = per === V.per || (Math.abs(V.f / V.N / (per + 1) / V.rate - 1) < 0.005 && Number.isInteger(per));
+    out.push(field(okPer ? pass('(a) PER = ' + per) : fail('(a) PER', isNaN(per) ? 'Enter an integer.' : V.f + ' / (' + V.N + ' × ' + V.rate + ') − 1 = ' + fmtN(V.f / V.N / V.rate - 1, 2) + ' → ' + V.per + '.' + (per === V.per + 1 ? ' Remember the −1: the counter counts 0…PER.' : '')), 'per'));
+    out.push(field(close(rate, V.act, 0.002) ? pass('(b) ' + fmtHz(V.act)) : fail('(b) Overflow rate', fmtHz(V.f) + ' / (' + V.N + ' × (' + V.per + ' + 1)) = ' + fmtHz(V.act) + '.'), 'rate'));
+    out.push(field(mux === V.mux ? pass('(c) CH' + V.ch + 'MUX = ' + hx(mux)) : fail('(c) CH' + V.ch + 'MUX', 'EVSYS_CHMUX_' + V.tc + '_OVF_gc = ' + hx(V.mux) + '.' + (mux === 0xC0 && V.mux !== 0xC0 ? ' 0xC0 is TCC0; each timer adds 8.' : '')), 'mux'));
+    let w = 'Expected ' + hx(V.evctrl) + ' = EVSEL_' + V.sel[1] + ' (' + V.sel[0] + ' << 3) | EVACT_CH0 (1).'; if (ev === 1 && V.ch) w += ' 0x01 uses EVSEL_0123, so channel 0 — not ' + V.ch + ' — would start the conversion.'; else if (ev === ((V.ch) | 0) || ev === V.ch << 3) w += ' Remember EVACT_CH0 (bits 2:0 = 1).';
+    out.push(field(ev === V.evctrl ? pass('(d) EVCTRL = ' + hx(ev)) : fail('(d) ADCA.EVCTRL', w), 'ev'));
+    return out;
+  },
+});
+})(typeof globalThis !== 'undefined' ? (globalThis.XL = globalThis.XL || {}) : (window.XL = window.XL || {}));
+
+/* ADC / event-system problems — part 2: C code graded on the simulator
+   (adc_init, adc_read, event-triggered sampling + ISR, voltmeter output, oscilloscope with input switching, practice 4). */
+(function (XL) {
+'use strict';
+const G = XL.G, A = XL.ADCX, CC = XL.CC, { esc, pass, fail, note, fmtHz, fmtT } = G;
+const hx = XL.defs.hx, fmtN = A.fmtN, cBlock = CC.cBlock;
+const head = (title, extra) => ['/*', ' * ' + title, ' */', '#include <avr/io.h>'].concat(extra || []).join('\n');
+/* graders run with a steady light (no 120 Hz flicker) so expected codes are exact */
+const asim = (V, p, noMain) => { const s = XL.C.newSim(p, V.clockHz, noMain); s.hooks = {}; const cfg = JSON.parse(JSON.stringify(V.analog || {})); if (cfg.cds !== null) cfg.cds = Object.assign({}, cfg.cds || {}, { ripple: 0 }); s.analog = new XL.AnalogBoard(cfg); return s; };
+const SRC = {
+  cds: { pos: 1, neg: 6, label: 'the CdS cell', pins: 'CDS+ → PA1, CDS− → PA6' },
+  j3: { pos: 4, neg: 5, label: 'the J3 analog input', pins: 'J3 signal → PA4, J3 reference → PA5' },
+};
+const REFS = { AREFB: [2.5, 'the 2.5 V reference on AREFB (PB0)'], INTVCC2: [1.65, 'VCC/2 (1.65 V)'], INTVCC: [3.3 / 1.6, 'VCC/1.6 (2.06 V)'], INT1V: [1.0, 'the internal 1.00 V reference'] };
+const RESN = { '12BIT': '12-bit, right-adjusted', '8BIT': '8-bit', 'LEFT12BIT': '12-bit, left-adjusted' };
+/* expected code for a voltage */
+const codeFor = (v, vref, res, signed) => { const bits8 = res === '8BIT'; const top = signed ? (bits8 ? 128 : 2048) : (bits8 ? 256 : 4096); let c = Math.max(signed ? -top : 0, Math.min(top - 1, Math.round(v / vref * top))); if (res === 'LEFT12BIT') c *= 16; return c; };
+const muxRows = (src) => { const S = SRC[src]; return [['    ADCA.CH0.CTRL = ADC_CH_INPUTMODE_DIFFWGAIN_gc | ADC_CH_GAIN_1X_gc;', 'differential with gain 1× (negative input is pin ' + S.neg + ')'], ['    ADCA.CH0.MUXCTRL = ADC_CH_MUXPOS_PIN' + S.pos + '_gc | ADC_CH_MUXNEG_PIN' + S.neg + '_gc;', 'PA' + S.pos + ' − PA' + S.neg]]; };
+function adcInitSrc(o) {
+  o = Object.assign({ src: 'cds', ref: 'AREFB', res: '12BIT', irq: null, ev: null }, o);
+  const S = SRC[o.src]; const rows = [['    PORTA.DIRCLR = PIN' + S.pos + '_bm | PIN' + S.neg + '_bm;', 'ADC pins are inputs'],
+    ['    ADCA.CTRLB = ADC_CONMODE_bm | ADC_RESOLUTION_' + o.res + '_gc;', 'signed, ' + RESN[o.res] + ', not free-running'], ['    ADCA.REFCTRL = ADC_REFSEL_' + o.ref + '_gc;', REFS[o.ref][1]],
+    ['    ADCA.PRESCALER = ADC_PRESCALER_DIV16_gc;', 'f_ADC = f_per / 16']].concat(muxRows(o.src));
+  if (o.irq) rows.push(['    ADCA.CH0.INTCTRL = ADC_CH_INTMODE_COMPLETE_gc | ADC_CH_INTLVL_' + o.irq + '_gc;', 'interrupt when a conversion completes']);
+  if (o.ev !== null && o.ev !== undefined) rows.push(['    ADCA.EVCTRL = ADC_EVSEL_' + ['0123', '1234', '2345', '3456', '4567', '567', '67', '7'][o.ev] + '_gc | ADC_EVACT_CH0_gc;', 'event channel ' + o.ev + ' starts CH0']);
+  rows.push(['    ADCA.CTRLA = ADC_ENABLE_bm;', 'enable last; no conversion started']);
+  return ['void adc_init(void)', '{', cBlock(rows), '}'].join('\n');
+}
+const tccRows = (rate, ch) => { const f = 2e6; const N = [1, 8, 64, 256, 1024].find(n => f / n / rate <= 65536 && Number.isInteger(f / n / rate)) || [1, 8, 64].find(n => f / n / rate <= 65536); const per = Math.round(f / N / rate) - 1;
+  return { N, per, rows: [['    TCC0.CNT = 0;', ''], ['    TCC0.PER = ' + per + ';', '(PER + 1) · ' + N + ' / 2 MHz = ' + fmtT((per + 1) * N / f)], ['    EVSYS.CH' + ch + 'MUX = EVSYS_CHMUX_TCC0_OVF_gc;', 'TCC0 overflow drives event channel ' + ch], ['    TCC0.CTRLA = TC_CLKSEL_DIV' + N + '_gc;', 'start, prescaler ' + N]] }; };
+const usartGiven = (rx) => ['/* usartd0_init (given): 110,400 bps (−0.05 %), 8O1 */', 'void usartd0_init(void)', '{', cBlock([['    PORTD.OUTSET = PIN3_bm;', 'TX idles high'], ['    PORTD.DIRSET = PIN3_bm;', ''], ['    PORTD.DIRCLR = PIN2_bm;', ''],
+  ['    USARTD0.CTRLC = USART_CMODE_ASYNCHRONOUS_gc | USART_PMODE_ODD_gc | USART_CHSIZE_8BIT_gc;', ''], ['    USARTD0.BAUDCTRLB = (0x9 << 4);', 'BSCALE = −7'], ['    USARTD0.BAUDCTRLA = 17;', 'BSEL = 17'], ['    USARTD0.CTRLB = USART_TXEN_bm' + (rx ? ' | USART_RXEN_bm' : '') + ';', '']]), '}', '',
+  'void usartd0_out_char(uint8_t c)', '{', '    while (!(USARTD0.STATUS & USART_DREIF_bm));', '    USARTD0.DATA = c;', '}'].join('\n');
+const UCFG = { baud: 2e6 / (16 * (17 / 128 + 1)), bits: 8, parity: 'O', stop: 1 };
+const LEDS = { RED: 4, GREEN: 5, BLUE: 6 };
+const adcLog = (s) => s.adcs.ADCA.log;
+const checkInitWrites = (ad) => { const iEn = ad.wlog.findIndex(w => w.o === 0 && (w.v & 1)); const lastCfg = ad.wlog.map((w, i) => (w.o === 1 || w.o === 2 || w.o === 4 || (w.o >= 0x20 && w.o <= 0x22)) ? i : -1).reduce((a, b) => Math.max(a, b), -1); return { iEn, lastCfg }; };
+/* explain what CH0 is actually measuring compared with the wanted source */
+function muxDiag(ad, src) {
+  const ch = ad.ch[0], mode = ch.ctrl & 3, pos = (ch.mux >> 3) & 15, neg = ch.mux & 7, gain = (ch.ctrl >> 2) & 7, S = SRC[src], iss = [];
+  if (mode === 1) iss.push('Single-ended measures PA' + pos + ' against ground, which includes the bias on the other side of ' + S.label + ' — it needs a differential measurement.');
+  else if (mode === 0) iss.push('INPUTMODE is INTERNAL (temperature/bandgap), not a pin.');
+  else if (mode === 2 && S.neg >= 4) iss.push('Differential <i>without</i> gain can only use PIN0–PIN3 as the negative input: MUXNEG = ' + neg + ' selects ' + (neg <= 3 ? 'PA' + neg : 'ground') + ', not PA' + S.neg + '. Use ADC_CH_INPUTMODE_DIFFWGAIN_gc with ADC_CH_GAIN_1X_gc.');
+  if (pos !== S.pos) iss.push('MUXPOS selects PA' + pos + '; the positive side of ' + S.label + ' is PA' + S.pos + '.');
+  if (mode === 3) { if (neg + 4 !== S.neg) iss.push('MUXNEG selects ' + (neg <= 3 ? 'PA' + (neg + 4) : 'ground') + '; the negative side is PA' + S.neg + '.'); if (gain !== 0) iss.push('Gain is ' + (gain === 7 ? '½×' : (1 << gain) + '×') + '; use 1×.'); }
+  else if (mode === 2 && S.neg < 4 && neg !== S.neg) iss.push('MUXNEG selects PA' + neg + '; the negative side is PA' + S.neg + '.');
+  return iss;
+}
+
+/* ================================================================== */
+XL.addProblem({
+  id: 'c-adc-init', cat: 'ADC', lang: 'c', title: 'adc_init(): ADCA for the CdS cell', level: 2, kind: 'code',
+  blurb: 'Lab 7 §1.3: signed, reference, MUXCTRL, enable last',
+  gen(rng, seed) {
+    const one = seed === 1; const src = one ? 'cds' : rng.pick(['cds', 'cds', 'j3']); const ref = one ? 'AREFB' : rng.pick(['AREFB', 'AREFB', 'INTVCC2', 'INTVCC']); const res = one ? '12BIT' : rng.pick(['12BIT', '12BIT', '8BIT', 'LEFT12BIT']);
+    const V = { src, ref, res, clockHz: 2e6, lang: 'c', analog: { gen: { wave: 'dc', offset: 1.5, amp: 0 } }, summary: SRC[src].label + ' · ' + RESN[res] + ' · ' + ref };
+    V.statement = '<p>Write <code>void adc_init(void)</code> that initializes <b>ADCA</b> as follows:</p><ul><li><b>' + RESN[res] + ', signed</b></li><li>normal mode (not free-running)</li><li>reference: <b>' + REFS[ref][1] + '</b></li>' +
+      '<li>channel 0 measures the voltage across <b>' + SRC[src].label + '</b> (on this bench: ' + SRC[src].pins + ')</li></ul><p>Only enable the module after all other initialization, and do <b>not</b> start a conversion in this function.</p><p class="muted">Pins are this bench\u2019s model of the OOTB Analog Backpack — check your schematic for the real ones.</p>';
+    const mainS = ['int main(void)', '{', '    adc_init();', '    while (1)', '    {', '    }', '}'].join('\n');
+    V.starter = [head('adc_init — Lab 7 §1.3'), '', 'void adc_init(void)', '{', '    // your code here', '}', '', mainS, ''].join('\n');
+    V.solution = [head('adc_init — Lab 7 §1.3'), '', adcInitSrc({ src, ref, res }), '', mainS].join('\n');
+    V.hints = ['CTRLB: ADC_CONMODE_bm makes it signed, RESOLUTION picks 12/8-bit, FREERUN stays 0. REFCTRL selects the reference. CH0.CTRL picks the input mode, CH0.MUXCTRL the + and − pins. CTRLA = ADC_ENABLE_bm comes last.',
+      'The negative pin is PA' + SRC[src].neg + ' — a pin 4–7 — so it needs <code>ADC_CH_INPUTMODE_DIFFWGAIN_gc | ADC_CH_GAIN_1X_gc</code> with <code>ADC_CH_MUXPOS_PIN' + SRC[src].pos + '_gc | ADC_CH_MUXNEG_PIN' + SRC[src].neg + '_gc</code>.'];
+    V.board = { slots: ['A', 'D'], led: {}, analog: V.analog, adc: 'ADCA' };
+    return V;
+  },
+  async grade(V, src) {
+    const r0 = CC.compileOrFail(V, src); if (r0.tests) return r0.tests; const pr = r0.p, out = [];
+    const miss = CC.needFns(pr, [['adc_init', 'void', 0]]); if (miss) return miss;
+    const s = asim(V, pr, true); const r = CC.callOk(s, 'adc_init'); if (!r.ok) return [fail('adc_init() returns', G.faultText(s) || 'adc_init never returned.')];
+    const ad = s.adcs.ADCA, b = ad.ctrlb; const iss = [];
+    if (!(b & 0x10)) iss.push('CONMODE is 0 (unsigned) — set ADC_CONMODE_bm for signed results.');
+    const rm = ['12BIT', '?', '8BIT', 'LEFT12BIT'][(b >> 1) & 3]; if (rm !== V.res) iss.push('Resolution is ' + (RESN[rm] || 'reserved') + '; the spec says ' + RESN[V.res] + '.');
+    if (b & 0x08) iss.push('FREERUN is set — the spec asks for normal mode.');
+    out.push(iss.length ? fail('CTRLB: signed, ' + RESN[V.res] + ', normal mode', iss.join(' ')) : pass('CTRLB: signed, ' + RESN[V.res] + ', normal mode'));
+    const rs = Object.keys(REFS).find(k => XL.defs.lookup('ADC_REFSEL_' + k + '_gc').v === (ad.refctrl & 0x70));
+    out.push(rs === V.ref ? pass('Reference: ' + REFS[V.ref][1]) : fail('Reference', 'REFCTRL selects ' + (rs ? REFS[rs][1] : (ad.refctrl & 0x70) === 0x20 ? 'AREFA (PA0) — nothing is connected there' : 'a reserved setting') + '; the spec needs ' + REFS[V.ref][1] + '.'));
+    const md = muxDiag(ad, V.src); out.push(md.length ? fail('Channel 0 measures ' + SRC[V.src].label, md.join(' ')) : pass('Channel 0 measures ' + SRC[V.src].label, 'PA' + SRC[V.src].pos + ' − PA' + SRC[V.src].neg + ', differential, gain 1×.'));
+    const { iEn, lastCfg } = checkInitWrites(ad);
+    if (!ad.on) out.push(fail('Module enabled, last', 'ADCA.CTRLA ENABLE is 0.'));
+    else out.push(iEn > lastCfg ? pass('Module enabled, last') : fail('Module enabled, last', 'ADC_ENABLE_bm was written before the rest of the configuration (' + ad.wlog.length + ' ADC writes; enable was #' + (iEn + 1) + '). Enable after everything else.'));
+    out.push(!ad.log.length && !ad.pend.length ? pass('No conversion started in adc_init()') : fail('No conversion started in adc_init()', 'adc_init() started a conversion; leave that to the caller.'));
+    const p = s.ports.A, m = (1 << SRC[V.src].pos) | (1 << SRC[V.src].neg); if (p.dir & m) out.push(fail('ADC pins are inputs', 'PA' + SRC[V.src].pos + '/PA' + SRC[V.src].neg + ' are outputs; the ADC must measure them as inputs.'));
+    /* functional: convert at two input levels */
+    if (!md.length && ad.on) {
+      const lv = V.src === 'cds' ? [0.25, 0.85] : [1.5, -2.0]; const got = [], want = [];
+      for (const x of lv) { if (V.src === 'cds') s.analog.cds.light = x; else s.analog.gen.offset = x; s.wr(0x220, ad.ch[0].ctrl | 0x80); G.runFor(s, 4000, () => !ad.pend.length); s.adv(4);
+        const res = ad.signed ? (ad.ch[0].res << 16) >> 16 : ad.ch[0].res; got.push(res); const vref = REFS[V.ref][0]; want.push(codeFor(s.analog.source(V.src === 'cds' ? 'cds' : 'gen', s.time()), vref, V.res, true)); }
+      const ok = got.every((g, i) => Math.abs(g - want[i]) <= (V.res === 'LEFT12BIT' ? 48 : 3));
+      out.push(ok ? pass('Conversions match the input', 'Results ' + got.join(' and ') + ' for the two test inputs.') : note('Conversions match the input', 'Results ' + got.join(', ') + ', expected about ' + want.join(', ') + '.', false));
+    }
+    const w = CC.warnNote(pr); if (w) out.push(w);
+    return out;
+  },
+});
+
+/* ================================================================== */
+XL.addProblem({
+  id: 'c-adc-read', cat: 'ADC', lang: 'c', title: 'adc_read(): start, wait, clear, read', level: 2, kind: 'code',
+  blurb: 'Lab 7 §1.4: polling CHIF',
+  gen(rng, seed) {
+    const one = seed === 1; const how = one ? 'ch' : rng.pick(['ch', 'ctrla']);
+    const V = { how, clockHz: 2e6, lang: 'c', analog: {}, summary: 'ADCA CH0 · polling' };
+    V.statement = '<p><code>adc_init()</code> is given (ADCA, 12-bit signed, 2.5 V on AREFB, channel 0 across the CdS cell). Write <code>int16_t adc_read(void)</code> that:</p><ol><li>starts a conversion on ADC channel 0,</li><li>waits for the proper ADC flag, indicating the conversion has finished,</li><li>clears that flag, and</li><li>returns the 12-bit signed result.</li></ol><p>The given <code>main</code> stores the result into <code>cds_result</code> continually — set a breakpoint after it and watch the Variables panel while you move the <b>light</b> slider.</p>';
+    const mainS = ['volatile int16_t cds_result;', '', 'int main(void)', '{', '    adc_init();', '    while (1)', '    {', '        cds_result = adc_read();', '    }', '}'].join('\n');
+    V.starter = [head('adc_read — Lab 7 §1.4'), '', adcInitSrc({}), '', 'int16_t adc_read(void)', '{', '    // your code here', '    return 0;', '}', '', mainS, ''].join('\n');
+    V.solution = [head('adc_read — Lab 7 §1.4'), '', adcInitSrc({}), '', 'int16_t adc_read(void)', '{', cBlock([
+      [how === 'ch' ? '    ADCA.CH0.CTRL |= ADC_CH_START_bm;' : '    ADCA.CTRLA |= ADC_CH0START_bm;', 'start a conversion on channel 0'], ['    while (!(ADCA.CH0.INTFLAGS & ADC_CH_CHIF_bm));', 'wait until it is complete'], ['    ADCA.CH0.INTFLAGS = ADC_CH_CHIF_bm;', 'clear the flag: write a 1'], ['    return (int16_t)ADCA.CH0.RES;', 'signed 12-bit result']]), '}', '', mainS].join('\n');
+    V.hints = ['A conversion starts with the START bit in CH0.CTRL (or CH0START in CTRLA). CH0.INTFLAGS bit CHIF goes to 1 when it is done, and is cleared by writing a 1 to it. CH0.RES is the 16-bit result.',
+      '<code>ADCA.CH0.CTRL |= ADC_CH_START_bm; while (!(ADCA.CH0.INTFLAGS & ADC_CH_CHIF_bm)); ADCA.CH0.INTFLAGS = ADC_CH_CHIF_bm; return ADCA.CH0.RES;</code>'];
+    V.board = { slots: ['A', 'D'], led: {}, analog: V.analog, adc: 'ADCA' };
+    return V;
+  },
+  async grade(V, src) {
+    const r0 = CC.compileOrFail(V, src); if (r0.tests) return r0.tests; const pr = r0.p, out = [];
+    const miss = CC.needFns(pr, [['adc_read', 'int16_t', 0]]); if (miss) return miss;
+    const s = asim(V, pr, true); CC.callOk(s, 'adc_init'); const ad = s.adcs.ADCA;
+    const exp = () => codeFor(s.analog.source('cds', s.time()), 2.5, '12BIT', true);
+    const results = []; let iss = [];
+    for (const light of [0.2, 0.9, 0.5]) {
+      s.analog.cds.light = light; const n0 = ad.log.length; const r = CC.callOk(s, 'adc_read', [], 60000);
+      if (!r.ok) { out.push(fail('adc_read() returns', r.why === 'halt' ? G.faultText(s) : 'adc_read never returned — is a conversion started before waiting for CHIF?')); return out; }
+      const e = exp(); results.push({ got: r.ret, e, conv: ad.log.length - n0, flag: ad.ch[0].flag });
+    }
+    const conv = results.map(x => x.conv);
+    if (conv.some(c => c === 0)) iss.push('A call returned without a conversion finishing — start one (ADC_CH_START_bm) and wait for CHIF.');
+    const stale = results.some((x, i) => i && Math.abs(x.got - x.e) > 3 && Math.abs(x.got - results[i - 1].e) <= 3);
+    if (results[0].flag || stale) iss.push('CHIF is still set after adc_read() returns, so the next call does not wait for its own conversion and returns the previous value. Clear it by writing a 1: ADCA.CH0.INTFLAGS = ADC_CH_CHIF_bm.');
+    const ok = results.every(x => Math.abs(x.got - x.e) <= 3);
+    out.push(ok && !iss.length ? pass('adc_read() returns fresh results', 'Light 20 % → ' + results[0].got + ', 90 % → ' + results[1].got + ', 50 % → ' + results[2].got + '.') : fail('adc_read() returns fresh results', 'Returned ' + results.map(x => x.got).join(', ') + ' for light 20 %, 90 %, 50 % (expected about ' + results.map(x => x.e).join(', ') + '). ' + iss.join(' ') + (results.some(x => x.got === (x.e & 0xFF)) ? ' Only the low byte came back — return the 16-bit RES.' : '')));
+    out.push(results.every(x => !x.flag) ? pass('CHIF is cleared before returning') : fail('CHIF is cleared before returning', 'The flag was left set.'));
+    const w = CC.warnNote(pr); if (w) out.push(w);
+    return out;
+  },
+});
+
+/* ================================================================== */
+XL.addProblem({
+  id: 'c-adc-event', cat: 'ADC', lang: 'c', title: 'Sample at 10 Hz with TCC0 + events', level: 3, kind: 'code',
+  blurb: 'Lab 7 §2: CH0MUX, EVCTRL, ADC ISR, LEDs',
+  gen(rng, seed) {
+    const one = seed === 1; const rate = one ? 10 : rng.pick([10, 5, 20, 25, 4]); const ch = one ? 0 : rng.int(0, 3); const lvl = one ? 'LO' : rng.pick(['LO', 'MED', 'HI']);
+    const leds = one ? ['RED', 'BLUE'] : rng.pick([['RED', 'BLUE'], ['RED', 'GREEN'], ['GREEN', 'BLUE']]); const color = { 'RED,BLUE': 'purple', 'RED,GREEN': 'yellow', 'GREEN,BLUE': 'cyan' }[leds.join()];
+    const V = { rate, ch, lvl, leds, clockHz: 2e6, lang: 'c', analog: {}, summary: rate + ' Hz · event ch ' + ch + ' · ' + lvl + ' · ' + leds.join('+') };
+    const T = tccRows(rate, ch); V.N = T.N; V.per = T.per;
+    V.statement = '<p>Sample the CdS cell every <b>' + fmtT(1 / rate) + '</b> (' + rate + ' Hz) with no software trigger. Starting from the §1 <code>adc_init()</code> (given):</p><ol>' +
+      '<li>Write <code>void tcc0_init(void)</code>: any valid prescaler/period so TCC0 overflows every ' + fmtT(1 / rate) + ', and its overflow drives <b>event channel ' + ch + '</b> (CH' + ch + 'MUX).</li>' +
+      '<li>Add to <code>adc_init()</code>: a channel-0 interrupt at <b>' + lvl + '</b> level when a conversion completes, and (EVCTRL) make a conversion start when <b>event channel ' + ch + '</b> fires.</li>' +
+      '<li>Write <code>ISR(ADCA_CH0_vect)</code>: save the result in <code>volatile int16_t adc_result</code> and toggle the <b>' + leds.map(l => l + '_PWM').join('</b> and <b>') + '</b> LEDs of the µPAD (' + leds.map(l => l + ' = PD' + LEDS[l]).join(', ') + ', active low) together, so the visible colour alternates ' + color + '/off.</li>' +
+      '<li>main: LED pins as outputs (off), adc_init, tcc0_init, the PMIC level, sei, infinite loop.</li></ol>';
+    const ledM = leds.map(l => 'PIN' + LEDS[l] + '_bm').join(' | ');
+    V.starter = [head('lab7_2.c — sample at ' + rate + ' Hz with events', ['#include <avr/interrupt.h>']), '', 'volatile int16_t adc_result;', '', '/* adc_init from §1 — add the interrupt and event settings */', adcInitSrc({}), '', 'void tcc0_init(void)', '{', '    // your code here', '}', '',
+      'ISR(ADCA_CH0_vect)', '{', '    // your code here', '}', '', 'int main(void)', '{', '    // your code here', '    while (1)', '    {', '    }', '}', ''].join('\n');
+    V.solution = [head('lab7_2.c — sample at ' + rate + ' Hz with events', ['#include <avr/interrupt.h>']), '', 'volatile int16_t adc_result;', '', adcInitSrc({ irq: lvl, ev: ch }), '', 'void tcc0_init(void)', '{', cBlock(T.rows), '}', '',
+      'ISR(ADCA_CH0_vect)', '{', cBlock([['    adc_result = ADCA.CH0.RES;', 'CHIF clears automatically'], ['    PORTD.OUTTGL = ' + ledM + ';', leds.join(' + ') + ' together']]), '}', '',
+      'int main(void)', '{', cBlock([['    PORTD.OUTSET = ' + ledM + ';', 'LEDs off (active low)'], ['    PORTD.DIRSET = ' + ledM + ';', ''], ['    adc_init();', ''], ['    tcc0_init();', ''], ['    PMIC.CTRL = PMIC_' + lvl + 'LVLEN_bm;', ''], ['    sei();', ''], ['    while (1)', ''], ['    {', ''], ['    }', '']]), '}'].join('\n');
+    V.hints = ['Three links: TCC0 overflow → EVSYS.CH' + ch + 'MUX (event channel ' + ch + ') → ADCA.EVCTRL (EVSEL that starts at channel ' + ch + ', EVACT_CH0). The ADC\u2019s own interrupt (CH0.INTCTRL) then hands you each result.',
+      '<code>EVSYS.CH' + ch + 'MUX = EVSYS_CHMUX_TCC0_OVF_gc;</code> · <code>ADCA.EVCTRL = ADC_EVSEL_' + ['0123', '1234', '2345', '3456'][ch] + '_gc | ADC_EVACT_CH0_gc;</code> · <code>ADCA.CH0.INTCTRL = ADC_CH_INTMODE_COMPLETE_gc | ADC_CH_INTLVL_' + lvl + '_gc;</code> · TCC0: PER = ' + T.per + ' with ÷' + T.N + '.'];
+    V.board = { slots: ['D', 'A'], led: { D: 'L' }, timer: 'TCC0', analog: V.analog, adc: 'ADCA' };
+    return V;
+  },
+  async grade(V, src) {
+    const r0 = CC.compileOrFail(V, src); if (r0.tests) return r0.tests; const pr = r0.p, out = [];
+    const miss = CC.needFns(pr, [['tcc0_init', 'void', 0], ['adc_init', 'void', 0], ['main', 'int']]); if (miss) return miss;
+    { const s = asim(V, pr, true); CC.callOk(s, 'tcc0_init'); const t = s.tcs.TCC0; const T = t.N ? (t.per + 1) * t.N / 2e6 : 0; const iss = [];
+      if (!t.N) iss.push('TCC0 is not running (CTRLA = 0).'); else if (Math.abs(T * V.rate - 1) > 0.005) iss.push('(PER + 1) · N / 2 MHz = ' + fmtT(T) + '; it must be ' + fmtT(1 / V.rate) + '.');
+      if (s.evsys.mux[V.ch] !== 0xC0) iss.push('EVSYS.CH' + V.ch + 'MUX = ' + hx(s.evsys.mux[V.ch]) + '; it must be EVSYS_CHMUX_TCC0_OVF_gc (0xC0).' + (s.evsys.mux.some((m, i) => m === 0xC0 && i !== V.ch) ? ' (You routed TCC0 to event channel ' + s.evsys.mux.findIndex(m => m === 0xC0) + '.)' : ''));
+      out.push(iss.length ? fail('tcc0_init(): ' + fmtT(1 / V.rate) + ' overflow on event channel ' + V.ch, iss.join(' ')) : pass('tcc0_init(): ' + fmtT(1 / V.rate) + ' overflow on event channel ' + V.ch, 'PER = ' + t.per + ', ÷' + t.N + '.')); }
+    { const s = asim(V, pr, true); CC.callOk(s, 'adc_init'); const ad = s.adcs.ADCA; const iss = [];
+      if ((ad.ch[0].intctrl & 3) !== ['OFF', 'LO', 'MED', 'HI'].indexOf(V.lvl)) iss.push('CH0.INTCTRL level is ' + ['OFF', 'LO', 'MED', 'HI'][ad.ch[0].intctrl & 3] + '; expected ' + V.lvl + '.');
+      if ((ad.ch[0].intctrl >> 2) & 3) iss.push('INTMODE is not COMPLETE.');
+      const act = ad.evctrl & 7, base = (ad.evctrl >> 3) & 7;
+      if (act !== 1 && !(act >= 2 && act <= 4)) iss.push('EVACT is ' + act + '; use ADC_EVACT_CH0_gc so an event starts channel 0.'); else if (base !== V.ch) iss.push('EVSEL makes event channel ' + base + ' the first one, so channel ' + V.ch + ' does not start CH0. Use ADC_EVSEL_' + ['0123', '1234', '2345', '3456'][V.ch] + '_gc.');
+      if (ad.ctrlb & 0x08) iss.push('FREERUN is set — conversions must come from the events only.');
+      out.push(iss.length ? fail('adc_init(): interrupt + event trigger', iss.join(' ')) : pass('adc_init(): interrupt + event trigger', 'EVCTRL = ' + hx(ad.evctrl) + ', CH0.INTCTRL = ' + hx(ad.ch[0].intctrl) + '.')); }
+    if (!pr.isrs.ADCA_CH0_vect) { out.push(fail('ISR(ADCA_CH0_vect) exists', Object.keys(pr.isrs).length ? 'Your ISR is for ' + Object.keys(pr.isrs).join(', ') + '.' : 'No ISR found.')); return out; }
+    const s = asim(V, pr, false); const per = 1 / V.rate; G.runFor(s, Math.round(2e6 * per * 6.5));
+    if (s.halted) { out.push(fail('The program samples every ' + fmtT(per), G.faultText(s))); return out; }
+    const log = adcLog(s); const ev = log.filter(l => /^event/.test(l.why)), sw = log.filter(l => l.why === 'software' && l.c0 > 2e6 * per * 0.5);
+    const gaps = ev.slice(1).map((l, i) => (l.c - ev[i].c) / 2e6); const okGap = gaps.length >= 4 && gaps.every(g => Math.abs(g - per) <= per * 0.01);
+    out.push(ev.length >= 5 && okGap && !sw.length ? pass('Conversions are started by the event every ' + fmtT(per), ev.length + ' event-triggered conversions.') : fail('Conversions are started by the event every ' + fmtT(per), ev.length + ' event-triggered conversions in ' + fmtT(6.5 * per) + (gaps.length ? ' (spacing ' + gaps.slice(0, 3).map(g => fmtT(g)).join(', ') + ')' : '') + '.' + (sw.length ? ' ' + sw.length + ' conversions were started by software in the main loop — the event alone should start them.' : '') + (!ev.length && !(s.sreg & 0x80) ? ' (Global interrupts are off, but events do not need them — check CH0MUX/EVCTRL.)' : '')));
+    const nIsr = s.crt.calls['ISR(ADCA_CH0_vect)'] || 0; const last = log[log.length - 1]; const res = s.crt.read('adc_result');
+    out.push(nIsr >= ev.length - 1 && nIsr > 0 && last && res === last.res ? pass('The ADC ISR runs for each result and saves it', nIsr + ' interrupts; adc_result = ' + res + '.') : fail('The ADC ISR runs for each result and saves it', 'ISR ran ' + nIsr + ' times for ' + log.length + ' conversions; adc_result = ' + res + (last ? ', last result ' + last.res : '') + '.' + (!nIsr ? ' Check CH0.INTCTRL, PMIC.CTRL and sei().' : '') + (res === undefined ? ' Declare  volatile int16_t adc_result;' : '')));
+    const D = s.ports.D, pa = LEDS[V.leds[0]], pb = LEDS[V.leds[1]]; let ta = 0, tb = 0, apart = 0, prev = null;
+    /* "together": the two pins may differ for a few instructions (two writes in a row), not for a visible time */
+    let since = null;
+    for (const h of D.hist) { const a = (h.lvl >> pa) & 1, b = (h.lvl >> pb) & 1; if (prev) { if (a !== prev[0]) ta++; if (b !== prev[1]) tb++; } prev = [a, b];
+      const both = ((h.dir >> pa) & 1) && ((h.dir >> pb) & 1); if (both && a !== b) { if (since === null) since = h.c; } else { if (since !== null && h.c - since > 2000) apart++; since = null; } }
+    if (since !== null && s.cycles - since > 2000) apart++;
+    out.push(ta >= nIsr - 1 && tb >= nIsr - 1 && nIsr > 0 && !apart ? pass(V.leds.join(' + ') + ' LEDs toggle together at ' + V.rate + ' Hz') : fail(V.leds.join(' + ') + ' LEDs toggle together at ' + V.rate + ' Hz', 'PD' + pa + ' toggled ' + ta + '×, PD' + pb + ' ' + tb + '× for ' + nIsr + ' interrupts' + (apart ? '; they were out of step (toggle both with one OUTTGL write)' : '') + '.' + (!((D.dir >> pa) & 1) ? ' PD' + pa + ' is not an output.' : '')));
+    const w = CC.warnNote(pr); if (w) out.push(w);
+    return out;
+  },
+});
+
+/* ================================================================== */
+XL.addProblem({
+  id: 'c-voltmeter', cat: 'ADC', lang: 'c', title: 'Voltmeter output: "+1.37 V (0x469)"', level: 3, kind: 'code',
+  blurb: 'Lab 7 §3: float → digits, sign, hex',
+  gen(rng, seed) {
+    const one = seed === 1; const ref = one ? 2.5 : rng.pick([2.5, 2.5, 1.65]); const bits = one ? 12 : rng.pick([12, 12, 8]);
+    const V = { ref, bits, clockHz: 2e6, lang: 'c', analog: {}, summary: bits + '-bit signed · V<sub>ref</sub> ' + ref + ' V' };
+    const top = bits === 12 ? 2048 : 128, nh = bits === 12 ? 3 : 2;
+    V.statement = '<p>Everything else of the Lab 7 §3 voltmeter is given (USARTD0 at 110,400 bps 8O1, a 1 Hz event-triggered conversion and an ADC ISR that sets a flag). Write <code>void out_voltage(int16_t result)</code> that sends, for a <b>' + bits + '-bit signed</b> result with a <b>' + ref + ' V</b> reference (V = result × ' + ref + ' / ' + top + '):</p>' +
+      '<p style="text-align:center"><code>(+/-)voltage_decimal V (0xvoltage_hex)</code> followed by CR and LF</p><ul><li>the sign <code>+</code> or <code>-</code> first, then the voltage with <b>two decimal places</b>,</li><li>then <code> V (0x</code>, the raw result as <b>' + nh + ' hex digits</b> (' + bits + '-bit two\u2019s complement), <code>)</code>, then <code>\\r\\n</code>.</li></ul>' +
+      '<p>E.g. ' + (bits === 12 ? '1121 → <code>+1.36 V (0x461)</code>, −1033 → <code>-1.26 V (0xBF7)</code>' : '35 → <code>+0.68 V (0x23)</code>, −64 → <code>-1.25 V (0xC0)</code>') + ' (for ' + ref + ' V' + (ref !== 2.5 ? '; the numbers differ here' : '') + '). No <code>sprintf</code>/<code>printf</code>; <code>float</code> is allowed. Use <code>usartd0_out_char()</code>.</p>';
+    const given = [usartGiven(false)].join('\n');
+    const mainS = ['volatile int16_t adc_result; volatile uint8_t adc_flag;', '', adcInitSrc({ irq: 'LO', ev: 0, res: bits === 12 ? '12BIT' : '8BIT', ref: ref === 2.5 ? 'AREFB' : 'INTVCC2' }), '', 'void tcc0_init(void)', '{', cBlock(tccRows(1, 0).rows), '}', '', 'ISR(ADCA_CH0_vect)', '{', '    adc_result = ADCA.CH0.RES;', '    adc_flag = 1;', '}', '',
+      'int main(void)', '{', '    usartd0_init();', '    adc_init();', '    tcc0_init();', '    PMIC.CTRL = PMIC_LOLVLEN_bm;', '    sei();', '    while (1)', '    {', '        if (adc_flag)', '        {', '            adc_flag = 0;', '            out_voltage(adc_result);', '        }', '    }', '}'].join('\n');
+    const pre = head('lab7_3.c — voltmeter', ['#include <avr/interrupt.h>']);
+    V.starter = [pre, '', given, '', '/* send "+d.dd V (0x' + 'H'.repeat(nh) + ')\\r\\n" */', 'void out_voltage(int16_t result)', '{', '    // your code here', '}', '', '/* ---- given ---- */', mainS, ''].join('\n');
+    V.solution = [pre, '', given, '', 'void out_voltage(int16_t result)', '{', cBlock([
+      ['    const char hex[] = "0123456789ABCDEF";', ''], ['    float v = result * ' + ref + ' / ' + top + '.0;', 'volts'], ['    if (v < 0) { usartd0_out_char(\'-\'); v = -v; }', 'sign first'], ['    else usartd0_out_char(\'+\');', ''],
+      ['    uint8_t d = (uint8_t)v;', 'integer digit'], ['    usartd0_out_char(\'0\' + d);', ''], ['    usartd0_out_char(\'.\');', ''], ['    v = 10 * (v - d); d = (uint8_t)v;', 'first decimal'], ['    usartd0_out_char(\'0\' + d);', ''], ['    v = 10 * (v - d); d = (uint8_t)v;', 'second decimal'], ['    usartd0_out_char(\'0\' + d);', ''],
+      ['    usartd0_out_char(\' \'); usartd0_out_char(\'V\');', ''], ['    usartd0_out_char(\' \'); usartd0_out_char(\'(\');', ''], ['    usartd0_out_char(\'0\'); usartd0_out_char(\'x\');', ''],
+      ['    uint16_t raw = (uint16_t)result & ' + (bits === 12 ? '0x0FFF' : '0x00FF') + ';', bits + '-bit two\u2019s complement']].concat(bits === 12 ? [['    usartd0_out_char(hex[(raw >> 8) & 0xF]);', '']] : []).concat([
+      ['    usartd0_out_char(hex[(raw >> 4) & 0xF]);', ''], ['    usartd0_out_char(hex[raw & 0xF]);', ''], ['    usartd0_out_char(\')\');', ''], ['    usartd0_out_char(\'\\r\');', 'carriage return'], ['    usartd0_out_char(\'\\n\');', 'line feed']])), '}', '', '/* ---- given ---- */', mainS].join('\n');
+    V.hints = ['Convert to volts with float. Send the sign and make the value positive; then (int) gives the first digit, and 10 × (v − digit) moves the next digit in front of the point — twice. For the hex part, mask the result to ' + bits + ' bits and send each nibble through a "0123456789ABCDEF" table.',
+      'Digits: <code>usartd0_out_char(\'0\' + d)</code>. Hex: <code>raw = result & ' + (bits === 12 ? '0x0FFF' : '0xFF') + ';</code> then <code>hex[(raw >> ' + (bits === 12 ? '8' : '4') + ') & 0xF]</code> … End with <code>\'\\r\'</code> and <code>\'\\n\'</code>.'];
+    V.board = { slots: ['D', 'A'], led: {}, usart: 'USARTD0', term: { baud: Math.round(UCFG.baud), bits: 8, parity: 'O', stop: 1 }, analog: V.analog, adc: 'ADCA' };
+    return V;
+  },
+  async grade(V, src) {
+    const r0 = CC.compileOrFail(V, src); if (r0.tests) return r0.tests; const pr = r0.p, out = [];
+    const miss = CC.needFns(pr, [['out_voltage', 'void', 1]]); if (miss) return miss;
+    const top = V.bits === 12 ? 2048 : 128, nh = V.bits === 12 ? 3 : 2, mask = V.bits === 12 ? 0xFFF : 0xFF;
+    const tests = V.bits === 12 ? [1121, -1033, 0, 2047, -2048, 7, -1] : [35, -64, 0, 127, -128, -1];
+    const s = asim(V, pr, true); CC.callOk(s, 'usartd0_init'); const bad = [];
+    for (const t of tests) {
+      const c0 = s.cycles; const r = CC.callOk(s, 'out_voltage', [t], 400000); G.runFor(s, Math.round(2e6 / UCFG.baud * 12 * 3));
+      const got = G.uartDecode(s.ports.D.hist, 3, 2e6, UCFG, c0).map(x => x.v); const str = String.fromCharCode(...got);
+      if (!r.ok) { bad.push(t + ': ' + (r.why === 'halt' ? G.faultText(s) : 'never returned')); break; }
+      const v = t * V.ref / top; const m = /^([+-])(\d)\.(\d\d) V \(0[xX]([0-9A-Fa-f]+)\)\r\n$/.exec(str);
+      const want = (v < 0 ? '-' : '+') + (Math.floor(Math.abs(v) * 100 + 1e-9) / 100).toFixed(2) + ' V (0x' + (t & mask).toString(16).toUpperCase().padStart(nh, '0') + ')';
+      if (!m) { let why = t + ' → "' + esc(G.showStr(got)) + '" (expected "' + want + '\\r\\n").'; if (!/\r\n$/.test(str)) why += ' It should end with \\r\\n.'; bad.push(why); continue; }
+      const val = (m[1] === '-' ? -1 : 1) * (+m[2] + +m[3] / 100); const hexOK = m[4].length === nh && parseInt(m[4], 16) === (t & mask);
+      const signOK = v === 0 ? true : (m[1] === '-') === (v < 0);
+      if (!signOK || Math.abs(val - v) > 0.0105 || !hexOK) bad.push(t + ' → "' + esc(str.replace(/\r\n$/, '')) + '" — expected about "' + want + '"' + (!hexOK ? ' (hex must be the ' + nh + '-digit ' + V.bits + '-bit two\u2019s complement of the result)' : '') + (!signOK ? ' (wrong sign)' : '') + '.');
+    }
+    out.push(!bad.length ? pass('out_voltage() formats every test value', tests.length + ' values, including 0, the extremes and negatives.') : fail('out_voltage() formats every test value', '<ul>' + bad.slice(0, 4).map(b => '<li>' + b + '</li>').join('') + '</ul>'));
+    const w = CC.warnNote(pr); if (w) out.push(w);
+    return out;
+  },
+});
+
+/* ================================================================== */
+XL.addProblem({
+  id: 'c-scope', cat: 'ADC', lang: 'c', title: 'Oscilloscope: 155 Hz to SerialPlot, P/S input switching', level: 3, kind: 'code',
+  blurb: 'Lab 7 §4–5: events, two ISRs, MUXCTRL',
+  gen(rng, seed) {
+    const one = seed === 1; const rate = one ? 155 : rng.pick([155, 100, 200, 120]);
+    const V = { rate, clockHz: 2e6, lang: 'c', analog: { gen: { wave: 'sine', freq: 5, amp: 2, offset: 0 } }, summary: rate + ' Hz · P → CdS, S → J3' };
+    V.statement = '<p>Turn the bench into a simple oscilloscope. Given: <code>usartd0_init()</code> (110,400 bps 8O1, receiver and transmitter on), <code>usartd0_out_char()</code>, and <code>adc_init()</code> (ADCA CH0 across the CdS cell, 12-bit signed, CH0 interrupt at LO level, event channel 0 starts CH0). Write:</p><ol>' +
+      '<li><code>void tcc0_init(void)</code>: TCC0 overflows at <b>' + rate + ' Hz</b> (error ≤ 2 %) and drives event channel 0.</li><li><code>ISR(ADCA_CH0_vect)</code>: store the result in a global and set a global flag.</li>' +
+      '<li><code>ISR(USARTD0_RXC_vect)</code>: <code>\'P\'</code> → measure the CdS cell (PA1 − PA6), <code>\'S\'</code> → measure J3 (PA4 − PA5); any other character changes nothing. Switch inputs <b>only</b> inside this ISR.</li>' +
+      '<li><code>main</code>: initialize everything, enable the USARTD0 receive interrupt (LO) and the PMIC, <code>sei()</code>; whenever the flag is set, clear it and send the 16-bit result as <b>Simple Binary</b> (1 channel, int16, little-endian).</li></ol><p>In the sandbox, the terminal\u2019s Plot view is SerialPlot; type P or S in Text view to switch inputs.</p>';
+    const given = [usartGiven(true), '', adcInitSrc({ irq: 'LO', ev: 0 })].join('\n');
+    const pre = head('lab7_5.c — oscilloscope with input switching', ['#include <avr/interrupt.h>']);
+    const T = tccRows(rate, 0); V.T = T;
+    V.starter = [pre, '', given, '', 'volatile int16_t sample;', 'volatile uint8_t sample_ready = 0;', '', 'void tcc0_init(void)', '{', '    // your code here', '}', '', 'ISR(ADCA_CH0_vect)', '{', '    // your code here', '}', '', 'ISR(USARTD0_RXC_vect)', '{', '    // your code here', '}', '',
+      'int main(void)', '{', '    // your code here', '    while (1)', '    {', '    }', '}', ''].join('\n');
+    V.solution = [pre, '', given, '', 'volatile int16_t sample;', 'volatile uint8_t sample_ready = 0;', '', 'void tcc0_init(void)', '{', cBlock(T.rows), '}', '',
+      'ISR(ADCA_CH0_vect)', '{', cBlock([['    sample = ADCA.CH0.RES;', ''], ['    sample_ready = 1;', 'main sends it']]), '}', '',
+      'ISR(USARTD0_RXC_vect)', '{', cBlock([['    uint8_t c = USARTD0.DATA;', 'reading DATA clears RXCIF'], ["    if (c == 'P')", 'photocell'], ['        ADCA.CH0.MUXCTRL = ADC_CH_MUXPOS_PIN1_gc | ADC_CH_MUXNEG_PIN6_gc;', ''], ["    else if (c == 'S')", 'J3 signal'], ['        ADCA.CH0.MUXCTRL = ADC_CH_MUXPOS_PIN4_gc | ADC_CH_MUXNEG_PIN5_gc;', '']]), '}', '',
+      'int main(void)', '{', cBlock([['    usartd0_init();', ''], ['    adc_init();', ''], ['    tcc0_init();', ''], ['    USARTD0.CTRLA = USART_RXCINTLVL_LO_gc;', 'receive interrupt'], ['    PMIC.CTRL = PMIC_LOLVLEN_bm;', ''], ['    sei();', ''], ['    while (1)', ''], ['    {', ''], ['        if (sample_ready)', ''], ['        {', ''],
+        ['            sample_ready = 0;', ''], ['            int16_t v = sample;', 'copy once'], ['            usartd0_out_char(v & 0xFF);', 'low byte first'], ['            usartd0_out_char((uint16_t)v >> 8);', 'then high byte'], ['        }', ''], ['    }', '']]), '}'].join('\n');
+    V.hints = ['Timer → EVSYS.CH0MUX → ADC (already set up to start on event channel 0) → ADC ISR → flag → main sends two bytes. The receive ISR only has to read DATA and rewrite CH0.MUXCTRL; the CdS input is MUXPOS PIN1/MUXNEG PIN6, J3 is PIN4/PIN5 (both in differential-with-gain mode, already set by adc_init).',
+      'TCC0: PER = ' + T.per + ' with ÷' + T.N + ' (' + fmtHz(2e6 / T.N / (T.per + 1)) + '). Enable the RX interrupt with <code>USARTD0.CTRLA = USART_RXCINTLVL_LO_gc;</code>. Send <code>v & 0xFF</code> then <code>v >> 8</code>.'];
+    V.board = { slots: ['D', 'A'], led: {}, timer: 'TCC0', usart: 'USARTD0', term: { baud: Math.round(UCFG.baud), bits: 8, parity: 'O', stop: 1, plot: true, plotCh: 1, plotType: 'int16', plotLE: true, plotAuto: true }, analog: V.analog, adc: 'ADCA' };
+    return V;
+  },
+  async grade(V, src) {
+    const r0 = CC.compileOrFail(V, src); if (r0.tests) return r0.tests; const pr = r0.p, out = [];
+    const miss = CC.needFns(pr, [['tcc0_init', 'void', 0], ['main', 'int']]); if (miss) return miss;
+    if (!pr.isrs.ADCA_CH0_vect) out.push(fail('ISR(ADCA_CH0_vect) exists', 'No ADC ISR found.'));
+    const rx = pr.info.fns['ISR(USARTD0_RXC_vect)'];
+    if (!rx) out.push(fail('Input switching happens in ISR(USARTD0_RXC_vect)', 'No receive ISR found.'));
+    else out.push(rx.regsW.has('ADCA_CH0_MUXCTRL') ? pass('Input switching happens in ISR(USARTD0_RXC_vect)') : fail('Input switching happens in ISR(USARTD0_RXC_vect)', 'The receive ISR never writes ADCA.CH0.MUXCTRL.'));
+    if (out.some(o => !o.pass)) return out;
+    const s = asim(V, pr, false); const u = s.usarts.USARTD0; const hz = 2e6;
+    const at = (t) => G.runFor(s, Math.round(t * hz - s.cycles));
+    const send = (ch) => u.inject(ch.charCodeAt(0), UCFG);
+    at(0.12); send('S'); at(0.24); send('Q'); at(0.36); send('P'); at(0.48); send('Q'); at(0.60);
+    if (s.halted) { out.push(fail('The program runs', G.faultText(s))); return out; }
+    const log = adcLog(s); const ev = log.filter(l => /^event/.test(l.why)); const gaps = ev.slice(1).map((l, i) => (l.c - ev[i].c) / hz); const rate = gaps.length ? 1 / (gaps.reduce((a, b) => a + b, 0) / gaps.length) : 0;
+    out.push(ev.length > 20 && Math.abs(rate / V.rate - 1) <= 0.02 ? pass('Samples at ' + fmtHz(rate), 'Within 2 % of ' + V.rate + ' Hz.') : fail('Samples at ' + V.rate + ' Hz', ev.length + ' event-triggered conversions' + (rate ? ' at ' + fmtHz(rate) : '') + '; expected ' + V.rate + ' Hz ± 2 %.'));
+    const bytes = G.uartDecode(s.ports.D.hist, 3, hz, UCFG, 0).map(x => x.v); const frames = []; for (let i = 0; i + 1 < bytes.length; i += 2) frames.push(((bytes[i + 1] << 8) | bytes[i]) << 16 >> 16);
+    const res = log.map(l => l.res); let best = -1, bestN = 0;
+    for (let off = 0; off < Math.min(10, res.length); off++) { let n = 0; for (let k = 0; k < frames.length && k + off < res.length; k++) if (frames[k] === res[k + off]) n++; if (n > bestN) { bestN = n; best = off; } }
+    const be = frames.length && bytes.length > 3 && (() => { const f2 = []; for (let i = 0; i + 1 < bytes.length; i += 2) f2.push(((bytes[i] << 8) | bytes[i + 1]) << 16 >> 16); return f2.filter((v, k) => v === res[k + Math.max(0, best)]).length > bestN; })();
+    const okStream = frames.length >= res.length - 3 && frames.length <= res.length + 1 && bestN >= frames.length * 0.95;
+    out.push(okStream ? pass('Every sample is sent once, little-endian', frames.length + ' samples received.') : fail('Every sample is sent once, little-endian', frames.length + ' 16-bit values arrived for ' + res.length + ' conversions; ' + bestN + ' matched in order.' + (be ? ' The bytes are big-endian — send the low byte first.' : '') + (frames.length > res.length + 1 ? ' Some samples were sent more than once — clear the flag.' : '') + (!frames.length ? ' Nothing was sent.' : '')));
+    const srcOf = (l) => /PA4 − PA5/.test(l.desc) ? 'S' : /PA1 − PA6/.test(l.desc) ? 'P' : '?';
+    const seg = (t0, t1) => log.filter(l => l.c >= t0 * hz && l.c < t1 * hz).map(srcOf);
+    const a = seg(0.02, 0.12), b = seg(0.14, 0.24), c = seg(0.26, 0.36), d = seg(0.38, 0.48), e = seg(0.50, 0.60);
+    const iss = [], saw = (x) => x.length ? [...new Set(x)].map(k => k === 'P' ? 'the CdS cell' : k === 'S' ? 'J3' : 'something else').join(' and ') : 'no conversions';
+    if (a.some(x => x !== 'P')) iss.push('Before any command the CdS cell should be measured (saw ' + saw(a) + ').');
+    if (!b.length || b.some(x => x !== 'S')) iss.push('After \'S\' the J3 input (PA4 − PA5) should be measured; saw ' + saw(b) + '.');
+    if (c.some(x => x !== 'S')) iss.push('\'Q\' (sent while measuring J3) must not change the input; saw ' + saw(c) + '.');
+    if (!d.length || d.some(x => x !== 'P')) iss.push('After \'P\' the CdS cell (PA1 − PA6) should be measured again; saw ' + saw(d) + '.');
+    if (e.some(x => x !== 'P')) iss.push('\'Q\' (sent while measuring the CdS cell) must not change the input; saw ' + saw(e) + '.');
+    out.push(iss.length ? fail('P and S switch inputs; other characters don\u2019t', iss.join(' ')) : pass('P and S switch inputs; other characters don\u2019t'));
+    const w = CC.warnNote(pr); if (w) out.push(w);
+    return out;
+  },
+});
+
+/* ================================================================== */
+XL.addProblem({
+  id: 'c-adc-grab', cat: 'ADC', lang: 'c', title: 'Grab a sample on every "G" (practice 4)', level: 3, kind: 'code',
+  blurb: 'ADCB3, USARTF0 at 50 kHz (BSCALE −3), is_G()',
+  gen(rng, seed) {
+    const one = seed === 1; const pin = one ? 3 : rng.pick([3, 3, 2, 5]); const ch = one ? 'G' : rng.pick(['G', 'G', 'R', 'S']);
+    const V = { pin, ch, clockHz: 10e6, lang: 'c', analog: { cds: null, gen: null, pins: { ['B' + pin]: { wave: 'triangle', freq: 4, amp: 0.45, offset: 0.5 } } }, summary: 'ADCB' + pin + ' · USARTF0 50 kHz 8E1 · "' + ch + '"' };
+    V.statement = '<p>(ADC practice problem 4.) The system runs at <b>10 MHz</b>. Write a complete C program that stores a single <b>12-bit</b> sample of <b>ADCB' + pin + '</b> (PORTB pin ' + pin + ') every time the serial character <b>"' + ch + '"</b> is received, into <code>uint16_t Samples[3700]</code>. The voltages are between 0 and 1.00 V. After 3,700 samples the process stops.</p><ol type="a">' +
+      '<li><code>void adc_init(void)</code> — ADCB ready to take those samples.</li><li><code>void sci_init(void)</code> — USARTF0 at <b>50 kHz</b> with <b>BSCALE = −3</b>, 8 data bits, <b>even</b> parity, 1 stop bit. Don\u2019t affect any PORTF pin you don\u2019t need. No interrupts.</li>' +
+      '<li><code>uint8_t is_' + ch + '(void)</code> — reads the serial input and returns 1 if the character is "' + ch + '", 0 otherwise.</li><li><code>main()</code>.</li></ol>';
+    const pre = ['/*', ' * ADC practice problem 4 — grab a sample on every "' + ch + '"', ' */', '#include <avr/io.h>'].join('\n');
+    V.starter = [pre, '', 'uint16_t Samples[3700];', '', 'void adc_init(void)', '{', '    // your code here', '}', '', 'void sci_init(void)', '{', '    // your code here', '}', '', 'uint8_t is_' + ch + '(void)', '{', '    // your code here', '    return 0;', '}', '',
+      'int main(void)', '{', '    // your code here', '    while (1)', '    {', '    }', '}', ''].join('\n');
+    V.solution = [pre, '', 'uint16_t Samples[3700];', '', 'void adc_init(void)', '{', cBlock([['    PORTB.DIRCLR = PIN' + pin + '_bm;', 'ADCB' + pin + ' input'], ['    ADCB.CTRLB = ADC_RESOLUTION_12BIT_gc;', 'unsigned, 12-bit right-adjusted'], ['    ADCB.REFCTRL = ADC_REFSEL_INT1V_gc;', '1.00 V: the full 0–1 V range'],
+      ['    ADCB.PRESCALER = ADC_PRESCALER_DIV64_gc;', 'f_ADC = 156 kHz'], ['    ADCB.CH0.CTRL = ADC_CH_INPUTMODE_SINGLEENDED_gc;', 'PB' + pin + ' against ground'], ['    ADCB.CH0.MUXCTRL = ADC_CH_MUXPOS_PIN' + pin + '_gc;', ''], ['    ADCB.CTRLA = ADC_ENABLE_bm;', '']]), '}', '',
+      '/* 10 MHz / (16 · (2^-3 · 92 + 1)) = 50 kHz */', 'void sci_init(void)', '{', cBlock([['    PORTF.OUTSET = PIN3_bm;', 'TXD0 idles high'], ['    PORTF.DIRSET = PIN3_bm;', 'TXD0 output'], ['    PORTF.DIRCLR = PIN2_bm;', 'RXD0 input'], ['    USARTF0.CTRLC = USART_CMODE_ASYNCHRONOUS_gc | USART_PMODE_EVEN_gc | USART_CHSIZE_8BIT_gc;', '8E1'],
+      ['    USARTF0.BAUDCTRLB = (0xD << 4) | (92 >> 8);', 'BSCALE = −3 (1101)'], ['    USARTF0.BAUDCTRLA = 92;', 'BSEL = 92'], ['    USARTF0.CTRLB = USART_RXEN_bm | USART_TXEN_bm;', 'no interrupts']]), '}', '',
+      'uint8_t is_' + ch + '(void)', '{', cBlock([['    while (!(USARTF0.STATUS & USART_RXCIF_bm));', 'wait for a character'], ["    return USARTF0.DATA == '" + ch + "';", '1 if it is a ' + ch]]), '}', '',
+      'int main(void)', '{', cBlock([['    uint16_t n = 0;', ''], ['    adc_init();', ''], ['    sci_init();', ''], ['    while (n < 3700)', 'stop after 3700 samples'], ['    {', ''], ['        if (is_' + ch + '())', ''], ['        {', ''], ['            ADCB.CH0.CTRL |= ADC_CH_START_bm;', ''],
+        ['            while (!(ADCB.CH0.INTFLAGS & ADC_CH_CHIF_bm));', ''], ['            ADCB.CH0.INTFLAGS = ADC_CH_CHIF_bm;', ''], ['            Samples[n++] = ADCB.CH0.RES;', ''], ['        }', ''], ['    }', ''], ['    while (1)', 'done'], ['    {', ''], ['    }', '']]), '}'].join('\n');
+    V.hints = ['A 0–1 V signal fits the internal 1.00 V reference. Unsigned single-ended mode uses all 12 bits (signed single-ended only gets 0…2047). BSEL = 2^3 · (10 MHz / (16 · 50 kHz) − 1). Even parity is USART_PMODE_EVEN_gc. Use OUTSET/DIRSET/DIRCLR so other PORTF pins stay untouched.',
+      'BSEL = 8 · 11.5 = 92 → BAUDCTRLA = 92, BAUDCTRLB = 0xD0 (−3 = 1101 in the top nibble). is_' + ch + ': wait for RXCIF, return DATA == \'' + ch + '\'. main: loop while n < 3700, and on a "' + ch + '" start CH0, wait for CHIF, clear it, store RES.'];
+    V.board = { slots: ['F', 'B'], led: {}, usart: 'USARTF0', term: { baud: 50000, bits: 8, parity: 'E', stop: 1 }, analog: V.analog, adc: 'ADCB' };
+    return V;
+  },
+  async grade(V, src) {
+    const r0 = CC.compileOrFail(V, src); if (r0.tests) return r0.tests; const pr = r0.p, out = []; const isF = 'is_' + V.ch;
+    const miss = CC.needFns(pr, [['adc_init', 'void', 0], ['sci_init', 'void', 0], [isF, 'uint8_t', 0], ['main', 'int']]); if (miss) return miss;
+    if (!pr.syms.get('Samples') || pr.syms.get('Samples').kind !== 'var') return [fail('uint16_t Samples[3700] exists', 'Declare the global array  uint16_t Samples[3700];')];
+    const cfg = { baud: 50000, bits: 8, parity: 'E', stop: 1 }, hz = 10e6;
+    /* (a) adc_init */
+    { const s = asim(V, pr, true); CC.callOk(s, 'adc_init'); const ad = s.adcs.ADCB, ch = ad.ch[0], mode = ch.ctrl & 3, pos = (ch.mux >> 3) & 15, rm = (ad.ctrlb >> 1) & 3; const iss = [];
+      if (!ad.on) iss.push('ADCB is not enabled.'); if (pos !== V.pin || mode === 0) iss.push('CH0 measures ' + (mode === 0 ? 'an internal signal' : 'PB' + pos) + ', not PB' + V.pin + '.');
+      if (mode >= 2 && (ch.mux & 7) !== 5 && (ch.mux & 7) !== 7 && !(mode === 3 && (ch.mux & 7) === 4)) iss.push('The negative input should be ground.');
+      if (rm !== 0) iss.push(rm === 2 ? 'Resolution is 8-bit; the problem wants 12-bit samples.' : 'Use the right-adjusted 12-bit resolution.');
+      let lo = null, hi = null; if (!iss.length) { for (const [v, k] of [[0.05, 'lo'], [0.95, 'hi']]) { s.analog.pins['B' + V.pin] = { offset: v }; s.wr(0x260, ch.ctrl | 0x80); G.runFor(s, 20000, () => !ad.pend.length); s.adv(4); const r = ad.signed ? (ch.res << 16) >> 16 : ch.res; if (k === 'lo') lo = r; else hi = r; } }
+      const top = ad.signed ? 2047 : 4095; if (hi !== null && hi >= top) iss.push('0.95 V already saturates the converter (' + hi + ') — the reference is too small.');
+      out.push(iss.length ? fail('(a) adc_init: ADCB' + V.pin + ', 12-bit, 0–1 V', iss.join(' ')) : pass('(a) adc_init: ADCB' + V.pin + ', 12-bit, 0–1 V', '0.05 V → ' + lo + ', 0.95 V → ' + hi + '.'));
+      if (!iss.length && (hi - lo) < 0.9 * 0.9 * 4095 * 0.95) out.push(note('Resolution used', 'A 0.9 V swing spans only ' + (hi - lo) + ' codes. Unsigned mode with the 1.00 V reference (INT1V) uses the full 0–4095.', false)); }
+    /* (b) sci_init */
+    { const s = asim(V, pr, true); const F = s.ports.F; F.dir = 0xB1; F.out = 0x45; F.changed(); const d0 = F.dir, o0 = F.out; CC.callOk(s, 'sci_init'); const u = s.usarts.USARTF0; const iss = [];
+      const others = ~0x0C & 0xFF; if ((F.dir & others) !== (d0 & others) || (F.out & others) !== (o0 & others)) iss.push('Other PORTF pins changed (DIR ' + hx(d0) + ' → ' + hx(F.dir) + ', OUT ' + hx(o0) + ' → ' + hx(F.out) + ') — use OUTSET/DIRSET/DIRCLR.');
+      if (!(F.dir & 0x08)) iss.push('PF3 (TXD0) is not an output.'); else if (!(F.out & 0x08)) iss.push('PF3 should be driven high (idle) before it becomes an output.');
+      if (F.dir & 0x04) iss.push('PF2 (RXD0) must be an input.');
+      const f = u.fmt(); if (u.ctrlc !== 0x23) iss.push('CTRLC = ' + hx(u.ctrlc) + ' (' + f.bits + f.parity + f.stop + '); 8E1 asynchronous is 0x23.');
+      if (Math.abs(f.baud / 50000 - 1) > 0.001) iss.push('Baud = ' + fmtHz(f.baud) + ' (BSCALE ' + u.bscale() + ', BSEL ' + u.bsel() + '); with BSCALE = −3 it should be BSEL = 92 → 50 kHz.');
+      if (!(u.ctrlb & 0x10)) iss.push('The receiver is not enabled (RXEN).'); if (u.ctrla) iss.push('USARTF0 interrupts are enabled — the problem says no interrupts.');
+      out.push(iss.length ? fail('(b) sci_init: USARTF0 50 kHz 8E1', iss.join(' ')) : pass('(b) sci_init: USARTF0 50 kHz 8E1', 'BSEL 92, BSCALE −3, other PORTF pins untouched.')); }
+    /* (c) is_X */
+    { const s = asim(V, pr, true); CC.callOk(s, 'sci_init'); const u = s.usarts.USARTF0; const got = [];
+      for (const c of [V.ch, 'x', V.ch.toLowerCase(), V.ch]) { u.inject(c.charCodeAt(0), cfg); G.runFor(s, Math.round(hz / 50000 * 12)); const r = CC.callOk(s, isF, [], 200000); got.push(r.ok ? r.ret : 'none'); }
+      const want = [1, 0, 0, 1]; out.push(got.join() === want.join() ? pass('(c) ' + isF + '() recognizes "' + V.ch + '"') : fail('(c) ' + isF + '() recognizes "' + V.ch + '"', 'For "' + V.ch + '", "x", "' + V.ch.toLowerCase() + '", "' + V.ch + '" it returned ' + got.join(', ') + ' (expected 1, 0, 0, 1).')); }
+    /* (d) whole program */
+    { const s = asim(V, pr, false); const u = s.usarts.USARTF0; const ad = s.adcs.ADCB; const seq = [V.ch, 'x', V.ch, V.ch, 'q', V.ch]; const send2 = (c) => u.inject(c.charCodeAt(0), cfg); const conv = [];
+      G.runFor(s, Math.round(hz * 0.002));
+      for (const c of seq) { const n0 = ad.log.length; u.inject(c.charCodeAt(0), cfg); G.runFor(s, Math.round(hz * 0.004)); if (ad.log.length > n0) conv.push(ad.log[ad.log.length - 1].res & 0xFFFF); }
+      if (s.halted) { out.push(fail('(d) main stores one sample per "' + V.ch + '"', G.faultText(s))); return out; }
+      const rt = s.crt; const st = [0, 1, 2, 3, 4, 5].map(i => rt.read('Samples', i));
+      const nG = seq.filter(c => c === V.ch).length; const ok = conv.length === nG && st.slice(0, nG).every((v, i) => v === conv[i]) && st[nG] === 0;
+      out.push(ok ? pass('(d) main stores one sample per "' + V.ch + '"', nG + ' "' + V.ch + '"s → Samples[0…' + (nG - 1) + '] = ' + st.slice(0, nG).join(', ') + '; the other characters were ignored.') : fail('(d) main stores one sample per "' + V.ch + '"', 'Sent ' + seq.map(c => '"' + c + '"').join(' ') + ': ' + conv.length + ' conversions, Samples[0…5] = ' + st.join(', ') + (conv.length ? ' (ADC results ' + conv.join(', ') + ')' : '') + '.'));
+      if (ok) { /* run to the end: exactly 3700 samples, then nothing more */
+        const total = 3700 + 5 - nG; for (let i = 0; i < total; i++) send2(V.ch); const n0 = ad.log.length;
+        G.runFor(s, Math.round(hz * (total + 2) * 11 / 50000) + 50000);
+        const nAll = nG + ad.log.length - n0, last = rt.read('Samples', 3699);
+        out.push(s.halted ? fail('(d) Stops after 3700 samples', G.faultText(s)) : nAll === 3700 && last ? pass('(d) Stops after 3700 samples', 'Sent ' + (total + nG) + ' "' + V.ch + '"s; exactly 3700 were sampled.') : fail('(d) Stops after 3700 samples', 'Sent ' + (total + nG) + ' "' + V.ch + '"s and ' + nAll + ' samples were taken' + (nAll > 3700 ? ' — the loop writes past the end of Samples[3700] (Samples[3699] is the last element).' : '.')));
+      }
+    }
+    const w = CC.warnNote(pr); if (w) out.push(w);
+    return out;
+  },
+});
+})(typeof globalThis !== 'undefined' ? (globalThis.XL = globalThis.XL || {}) : (window.XL = window.XL || {}));
+
 /* Sandbox example programs */
 (function (XL) {
 'use strict';
@@ -6618,6 +7432,85 @@ int main(void)
     }
 }
 ` },
+  { id: 'c-adc', lang: 'c', title: 'C: ADC → SerialPlot', blurb: 'Polled ADCA conversions of the CdS cell and J3, two plot channels', slots: ['D', 'A'], pol: {}, timer: 'TCC0', usart: 'USARTD0', term: { baud: 125000, bits: 8, parity: 'N', stop: 1, plot: true, plotCh: 2, plotType: 'int16', plotLE: true, plotAuto: true }, analog: { gen: { wave: 'sine', freq: 4, amp: 2, offset: 0 } }, adc: 'ADCA', src:
+`/*
+ * ADCA, 12-bit signed, 2.5 V reference on AREFB.
+ * Every 10 ms main measures the CdS cell (PA1 − PA6) and the J3
+ * input (PA4 − PA5) by rewriting CH0.MUXCTRL, and sends both
+ * results to the Plot view (2 × int16, little-endian).
+ * Drag the CdS light slider and change the J3 wave in the
+ * Analog · ADC panel while it runs.
+ * (Polling, not events: Lab 7 asks you to trigger with events.)
+ */
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
+volatile uint8_t tick = 0;
+
+ISR(TCC0_OVF_vect)
+{
+    tick = 1;
+}
+
+void adc_init(void)
+{
+    PORTA.DIRCLR = PIN1_bm | PIN4_bm | PIN5_bm | PIN6_bm;
+    ADCA.CTRLB = ADC_CONMODE_bm | ADC_RESOLUTION_12BIT_gc;    // signed 12-bit
+    ADCA.REFCTRL = ADC_REFSEL_AREFB_gc;                       // 2.5 V
+    ADCA.PRESCALER = ADC_PRESCALER_DIV16_gc;
+    ADCA.CH0.CTRL = ADC_CH_INPUTMODE_DIFFWGAIN_gc | ADC_CH_GAIN_1X_gc;
+    ADCA.CTRLA = ADC_ENABLE_bm;                               // last
+}
+
+int16_t adc_measure(uint8_t mux)
+{
+    ADCA.CH0.MUXCTRL = mux;
+    ADCA.CH0.CTRL |= ADC_CH_START_bm;
+    while (!(ADCA.CH0.INTFLAGS & ADC_CH_CHIF_bm));
+    ADCA.CH0.INTFLAGS = ADC_CH_CHIF_bm;
+    return ADCA.CH0.RES;
+}
+
+void usartd0_init(void)
+{
+    PORTD.OUTSET = PIN3_bm;
+    PORTD.DIRSET = PIN3_bm;
+    USARTD0.CTRLC = USART_CMODE_ASYNCHRONOUS_gc | USART_PMODE_DISABLED_gc | USART_CHSIZE_8BIT_gc;
+    USARTD0.BAUDCTRLB = 0;
+    USARTD0.BAUDCTRLA = 0;              // 2 MHz / 16 = 125000 bps
+    USARTD0.CTRLB = USART_TXEN_bm;
+}
+
+void out_int16(int16_t v)
+{
+    while (!(USARTD0.STATUS & USART_DREIF_bm));
+    USARTD0.DATA = v & 0xFF;            // low byte first
+    while (!(USARTD0.STATUS & USART_DREIF_bm));
+    USARTD0.DATA = (uint16_t)v >> 8;
+}
+
+int main(void)
+{
+    adc_init();
+    usartd0_init();
+    TCC0.PER = 19999;                   // 2 MHz / 20000 = 100 Hz
+    TCC0.INTCTRLA = TC_OVFINTLVL_LO_gc;
+    TCC0.CTRLA = TC_CLKSEL_DIV1_gc;
+    PMIC.CTRL = PMIC_LOLVLEN_bm;
+    sei();
+    while (1)
+    {
+        if (tick)
+        {
+            tick = 0;
+            int16_t cds = adc_measure(ADC_CH_MUXPOS_PIN1_gc | ADC_CH_MUXNEG_PIN6_gc);
+            int16_t j3 = adc_measure(ADC_CH_MUXPOS_PIN4_gc | ADC_CH_MUXNEG_PIN5_gc);
+            out_int16(cds);
+            out_int16(j3);
+        }
+    }
+}
+` },
   { id: 'stack', title: 'Stack playground', blurb: 'Nested calls, PUSH/POP', slots: ['E', 'D'], pol: { E: 'H' }, src:
 `;***************************************************************
 ;* Step through this with F11 and watch the Stack panel:
@@ -6782,6 +7675,23 @@ const TABS = {
       '<h3>This bench’s wiring</h3><p>Problems state their own wiring. The Lab 6 style problems put the IMU on <b>SPIF</b> with <b>CS = PF4</b> and <b>INT1 → PC6</b>; check your backpack schematic for the real pins. Use <b>Hold the board</b> in the SPI panel to tilt the simulated IMU.</p>' +
       '<h3>lsm6dsl_registers.h (bench copy)</h3><pre class="stackfig">' + G.esc(XL.CC ? XL.CC.LSM_H : '') + '</pre>';
   },
+  adc: () => '<h3>Transfer function</h3><p>For any ADC, the line through <b>(lowest code, V<sub>refL</sub>)</b> and <b>(highest code, V<sub>refH</sub>)</b> converts between codes and volts: <b>V = a·code + b</b>, a = (V<sub>refH</sub> − V<sub>refL</sub>) / (max − min). An n-bit signed converter uses codes −2<sup>n−1</sup> … 2<sup>n−1</sup> − 1 (two’s complement); unsigned uses 0 … 2<sup>n</sup> − 1.</p>' +
+    tbl(['XMEGA mode', 'Result', 'Range'], [['Signed (CONMODE = 1), 12-bit', 'RES = (V<sub>INP</sub> − V<sub>INN</sub>) · gain / V<sub>REF</sub> · 2048', '−2048 … 2047'], ['Unsigned (CONMODE = 0), 12-bit', 'RES = V<sub>INP</sub> / V<sub>REF</sub> · 4096', '0 … 4095'], ['8-bit (RESOLUTION = 8BIT)', 'same, ÷16: signed ·128, unsigned ·256', '−128 … 127 / 0 … 255'], ['12-bit left-adjusted', '12-bit result × 16 (read RESH for 8 bits)', '']]) +
+    '<p>So with the 2.5 V reference in signed mode, <b>V = RES × 2.5 / 2048</b> (1 LSB ≈ 1.22 mV). Differential inputs need signed mode. On real hardware unsigned mode adds a small fixed offset (about 5 % of V<sub>REF</sub>) so 0 V does not read 0; this bench leaves it out.</p>' +
+    '<h3>Registers (ADCx = base + offset)</h3>' + tbl(['Offset', 'Register', 'Bits'], [['+0x00', '<code>CTRLA</code>', 'CH3…CH0START 5:2 · FLUSH 1 · <b>ENABLE 0</b> (set it last)'], ['+0x01', '<code>CTRLB</code>', 'CURRLIMIT 6:5 · <b>CONMODE 4</b> (1 = signed) · FREERUN 3 · RESOLUTION 2:1 (00 12-bit, 10 8-bit, 11 12-bit left)'],
+      ['+0x02', '<code>REFCTRL</code>', 'REFSEL 6:4 (000 INT1V 1.00 V · 001 INTVCC = VCC/1.6 · 010 AREFA PA0 · 011 AREFB PB0 · 100 INTVCC2 = VCC/2) · BANDGAP 1 · TEMPREF 0'], ['+0x03', '<code>EVCTRL</code>', 'SWEEP 7:6 · EVSEL 5:3 · EVACT 2:0'], ['+0x04', '<code>PRESCALER</code>', 'f<sub>ADC</sub> = f<sub>per</sub> / 2<sup>PRESCALER+2</sup> (DIV4 … DIV512)'], ['+0x06', '<code>INTFLAGS</code>', 'CH3IF…CH0IF (write 1 to clear)'],
+      ['+0x10/12…', '<code>CH0RES…CH3RES</code>', '16-bit results (same as CHn.RES)'], ['+0x20 + 8n', '<code>CHn.CTRL</code>', '<b>START 7</b> · GAIN 4:2 (1×…64×, ½×) · INPUTMODE 1:0 (00 internal · 01 single-ended · 10 differential · 11 differential with gain)'],
+      ['+0x21 + 8n', '<code>CHn.MUXCTRL</code>', 'MUXPOS 6:3 · MUXNEG 2:0'], ['+0x22 + 8n', '<code>CHn.INTCTRL</code>', 'INTMODE 3:2 (COMPLETE / BELOW / ABOVE) · INTLVL 1:0'], ['+0x23 + 8n', '<code>CHn.INTFLAGS</code>', 'CHIF 0 — conversion done; write 1 to clear (the ISR clears it automatically)'], ['+0x24 + 8n', '<code>CHn.RES</code>', 'RESL / RESH']]) +
+    '<p>ADCA = <code>0x0200</code> (pins on PORTA), ADCB = <code>0x0240</code> (PORTB). Vectors <code>ADCA_CH0_vect</code> … <code>ADCB_CH3_vect</code>. A conversion takes 7 ADC clocks at 12-bit (5 at 8-bit, +1 with the gain stage).</p>' +
+    '<h3>MUXNEG depends on INPUTMODE</h3>' + tbl(['MUXNEG', 'DIFF (10)', 'DIFFWGAIN (11)'], [['000', 'PIN0', 'PIN4'], ['001', 'PIN1', 'PIN5'], ['010', 'PIN2', 'PIN6'], ['011', 'PIN3', 'PIN7'], ['100', '—', 'internal GND'], ['101', 'pad GND', '—'], ['111', 'internal GND', 'pad GND']]) +
+    '<p>A negative input on pins 4–7 therefore needs <b>differential with gain</b> (use <code>ADC_CH_GAIN_1X_gc</code> for no amplification). In the header, <code>ADC_CH_MUXNEG_PIN6_gc</code> has the field value 2 — the same bits as PIN2 — so the INPUTMODE decides which pin you get.</p>' +
+    '<pre class="stackfig">int16_t adc_read(void) {\n    ADCA.CH0.CTRL |= ADC_CH_START_bm;               // start CH0\n    while (!(ADCA.CH0.INTFLAGS & ADC_CH_CHIF_bm));  // wait until done\n    ADCA.CH0.INTFLAGS = ADC_CH_CHIF_bm;             // clear: write a 1\n    return ADCA.CH0.RES;\n}</pre>' +
+    '<h3>Event system</h3><p>An event is a signal from one peripheral to another that needs no CPU and no interrupt. Route a source to one of 8 channels with <code>EVSYS.CHnMUX</code>, then tell the user which channel to listen to.</p>' +
+    tbl(['Source', 'CHnMUX'], [['TCC0 OVF / ERR / CCA…CCD', '0xC0 / 0xC1 / 0xC4…0xC7'], ['TCC1, TCD0, TCD1, TCE0, TCE1, TCF0, TCF1 OVF', '0xC8, 0xD0, 0xD8, 0xE0, 0xE8, 0xF0, 0xF8'], ['ADCA CH0…CH3 done', '0x20…0x23 (ADCB 0x24…)'], ['PORTx pin n', '0x50 + 8·port + n (PORTA = 0)'], ['Prescaler clk/2<sup>k</sup>', '0x80 + k']]) +
+    tbl(['EVCTRL field', 'Meaning'], [['EVSEL 5:3', 'first event channel the ADC listens to: 0123 (0), 1234 (1), 2345 (2), 3456 (3), 4567 (4), 567, 67, 7'], ['EVACT 2:0', 'NONE 0 · <b>CH0 1</b>: the first selected event channel starts CH0 · CH01 2 · CH012 3 · CH0123 4 · SWEEP 5 · SYNCSWEEP 6'], ['SWEEP 7:6', 'channels in a sweep: 0, 01, 012, 0123']]) +
+    '<pre class="stackfig">TCC0.PER = 24999;                        // 2 MHz / 8 / 25000 = 10 Hz\nEVSYS.CH0MUX = EVSYS_CHMUX_TCC0_OVF_gc;  // overflow → event channel 0\nADCA.EVCTRL = ADC_EVSEL_0123_gc | ADC_EVACT_CH0_gc;\nADCA.CH0.INTCTRL = ADC_CH_INTMODE_COMPLETE_gc | ADC_CH_INTLVL_LO_gc;\nTCC0.CTRLA = TC_CLKSEL_DIV8_gc;</pre>' +
+    '<h3>Successive approximation</h3><p>An n-bit SAR converter tries one bit per step, MSB first: set the bit, let the internal DAC turn the guess into a voltage, and keep the bit only if V<sub>in</sub> is at least that voltage. The first guess is <b>100…0</b> (half of full scale); after n trials the register holds the result.</p>' +
+    '<h3>This bench’s wiring</h3><p>Lab 7 style problems use the OOTB Analog Backpack as modelled here: <b>CdS cell</b> between <b>PA1 (+)</b> and <b>PA6 (−)</b>, <b>J3</b> signal on <b>PA4</b> with its reference on <b>PA5</b> (the backpack scales J3 by 0.4), <b>AREFB (PB0) = 2.5 V</b>, AREFA not connected, µPAD RGB LED: RED_PWM PD4, GREEN_PWM PD5, BLUE_PWM PD6 (active low). Check your backpack schematic for the real pins. Use the <b>Analog · ADC</b> panel to change the light level and the J3 waveform while a program runs.</p>',
   c: () => '<h3>C on the ATxmega128A1U (avr-gcc)</h3>' + tbl(['Type', 'Bits', 'Range'], [['char / int8_t', '8', '−128…127'], ['uint8_t', '8', '0…255'], ['<b>int</b> / int16_t', '<b>16</b>', '−32768…32767'], ['unsigned int / uint16_t', '16', '0…65535'], ['long / int32_t', '32', '±2.1·10⁹'], ['uint32_t', '32', '0…4.29·10⁹'], ['float / double', '32', 'IEEE single']]) +
     '<p><b>int is 16 bits here</b>: <code>1 &lt;&lt; 15</code> is negative and <code>1 &lt;&lt; 20</code> is 0 — write <code>1UL &lt;&lt; 20</code>. Arithmetic on uint8_t values happens in int, so <code>(hi &lt;&lt; 8) | lo</code> works; cast to <code>int16_t</code> for a signed result.</p>' +
     '<h3>Registers</h3><pre class="stackfig">#include &lt;avr/io.h&gt;\nPORTF.DIRSET = PIN4_bm | PIN5_bm;     // struct style\nPORTF_DIRSET = PIN4_bm | PIN5_bm;     // flat style (same register)\nTCC0.PER = 2499;                      // 16-bit: low byte written first for you\nif (SPIF.STATUS &amp; SPI_IF_bm) { … }   // test a flag\nPORTE.OUTCLR = PIN2_bm;               // strobe registers: plain "=", never |=</pre>' +
@@ -7435,11 +8345,96 @@ XL.Panels = function (App) {
     box.querySelectorAll('[data-tilt]').forEach(b => b.addEventListener('click', () => { dev.tilt = b.dataset.tilt.split(',').map(Number); spiKey = ''; renderSpi(true); }));
     const wb = $('imuWob'); if (wb) wb.addEventListener('change', e => { dev.wobble = e.target.checked; });
   }
-  function render() { renderBoard(); drawAnl(); renderTerm(); renderCpu(); renderTimer(); renderStack(); renderSpi(); }
+  /* ---------------- analog board + ADC + event system ---------------- */
+  shell('pAdc', 'p-adc', 'Analog · ADC', '<select class="mini" id="adcSel" aria-label="ADC shown"><option>ADCA</option><option>ADCB</option></select>',
+    '<div class="ain" id="ain"></div><div class="spi-cfg" id="adcCfg"></div><div class="tcgrid" id="adcGrid"></div><canvas class="scope" id="adcCv" height="80" aria-label="Recent ADC results"></canvas><div class="tcnote" id="evNote"></div>');
+  $('rack').insertBefore($('pAdc'), $('pTerm'));
+  $('adcSel').addEventListener('change', e => { App.st.adcSel = e.target.value; App.save(); adcKey = ''; renderAdc(true); });
+  const EVNAME = {}; Object.keys(XL.defs.EVMUX).forEach(k => { EVNAME[XL.defs.EVMUX[k]] = k.replace('_', ' '); });
+  const ABRD = () => { const s = S(); if (!s.analog) s.analog = new XL.AnalogBoard({}); return s.analog; };
+  const fV = (v, sign) => (sign && v >= 0 ? '+' : '') + v.toFixed(v !== 0 && Math.abs(v) < 0.1 ? 3 : 2) + ' V';
+  const WAVES = [['sine', 'Sine'], ['triangle', 'Triangle'], ['square', 'Square'], ['sawtooth', 'Sawtooth'], ['dc', 'DC']];
+  let adcKey = '', adcT = 0, adcTrail = 0;
+  function setAnalog(cfg, adc) {
+    const a = ABRD(); a.set(cfg || {});
+    if (a.cds && !(cfg && cfg.cds && cfg.cds.light != null) && App.st.light != null) a.cds.light = App.st.light;
+    if (adc) App.st.adcSel = adc;
+    const el = $('pAdc'); if (cfg) { el.classList.remove('closed'); App.st.closed.pAdc = false; } else if (App.st.closed.pAdc === undefined) { el.classList.add('closed'); App.st.closed.pAdc = true; }
+    App.save(); buildAdc();
+  }
+  function buildAdc() {
+    const a = ABRD(); let h = '';
+    if (a.cds) h += '<div class="aslide"><label for="aLight">CdS light</label><input type="range" id="aLight" min="0" max="100" step="1" value="' + Math.round(a.cds.light * 100) + '"><span class="v" id="aLightV"></span></div>';
+    if (a.gen) h += '<div class="term-set agen"><span class="ak">J3 input</span>' + tsel('aWave', 'Wave', WAVES, a.gen.wave) +
+      '<label class="tctl"><span>Freq (Hz)</span><input id="aFreq" type="number" min="0" max="1000" step="1" value="' + a.gen.freq + '"></label><label class="tctl"><span>Amp (V)</span><input id="aAmp" type="number" min="0" max="5" step="0.1" value="' + a.gen.amp + '"></label><label class="tctl"><span>Offset (V)</span><input id="aOff" type="number" min="-5" max="5" step="0.1" value="' + a.gen.offset + '"></label></div>';
+    const pins = Object.keys(a.pins);
+    if (pins.length) h += '<div class="ain-pins">' + pins.map(k => { const p = a.pins[k]; return '<span><b>P' + k + '</b> ' + (p.wave && p.wave !== 'dc' && p.amp ? p.wave + ' ' + (p.freq || 0) + ' Hz, ' + fV((p.offset || 0) - p.amp) + ' … ' + fV((p.offset || 0) + p.amp) : fV(p.offset || 0)) + '</span>'; }).join('') + '</div>';
+    const wire = []; if (a.cds) wire.push('CdS cell: + → P' + a.cds.pos + ', − → P' + a.cds.neg); if (a.gen) wire.push('J3: signal → P' + a.gen.pos + ', reference → P' + a.gen.neg + ' (backpack scales it ×' + a.gen.gain + ')');
+    wire.push('AREFB (PB0) = ' + (a.arefs.B != null ? a.arefs.B + ' V' : 'not connected')); if (a.arefs.A == null) wire.push('AREFA (PA0) not connected');
+    h += '<div class="muted ain-wire">Bench wiring — ' + wire.join(' · ') + '. Check your backpack schematic.</div>';
+    $('ain').innerHTML = h;
+    const L = $('aLight'); if (L) L.addEventListener('input', () => { a.cds.light = +L.value / 100; App.st.light = a.cds.light; App.save(); adcKey = ''; renderAdc(true); });
+    const upd = () => { Object.assign(a.gen, { wave: $('aWave').value, freq: Math.max(0, +$('aFreq').value || 0), amp: Math.max(0, +$('aAmp').value || 0), offset: +$('aOff').value || 0 }); adcKey = ''; renderAdc(true); };
+    ['aWave', 'aFreq', 'aAmp', 'aOff'].forEach(id => { const e = $(id); if (e) e.addEventListener(id === 'aWave' ? 'change' : 'input', upd); });
+    $('adcSel').value = App.st.adcSel || 'ADCA'; adcKey = ''; renderAdc(true);
+  }
+  const REFN = ['1.00 V (INT1V)', 'VCC/1.6 (INTVCC)', 'AREFA (PA0)', 'AREFB (PB0)', 'VCC/2 (INTVCC2)'];
+  const RESN = ['12-bit', '?', '8-bit', '12-bit left-adj.'];
+  function chText(ad, c) {
+    const ch = ad.ch[c], mode = ch.ctrl & 3, pos = (ch.mux >> 3) & 15, neg = ch.mux & 7, gc = (ch.ctrl >> 2) & 7, L = 'P' + ad.L;
+    const g = gc === 7 ? '½×' : (1 << gc) + '×';
+    if (mode === 0) return ['internal', ['temperature', 'bandgap', 'VCC/10', 'DAC'][pos & 3] || '?'];
+    if (mode === 1) return ['single-ended', L + pos + ' − GND'];
+    if (mode === 2) return ['differential', L + pos + ' − ' + (neg <= 3 ? L + neg : neg === 5 || neg === 7 ? 'GND' : '?')];
+    return ['diff. ×' + g.replace('×', ''), L + pos + ' − ' + (neg <= 3 ? L + (neg + 4) : neg === 4 || neg === 7 ? 'GND' : '?')];
+  }
+  function renderAdc(force) {
+    const el = $('pAdc'); if (el.classList.contains('closed') && !force) return;
+    const now = performance.now(); if (!force && now - adcT < 150) { if (!adcTrail) adcTrail = setTimeout(() => { adcTrail = 0; adcT = 0; renderAdc(); }, 170); return; } adcT = now;
+    const sim = S(), a = ABRD(), name = App.st.adcSel || 'ADCA', ad = sim.adcs[name]; if (!ad) return; const t = sim.time();
+    const lv = $('aLightV'); if (lv && a.cds) lv.textContent = Math.round(a.cds.light * 100) + ' % → ' + fV(a.cdsV(t));
+    const key = [name, ad.ctrla, ad.ctrlb, ad.refctrl, ad.evctrl, ad.prescaler, ad.ch[0].ctrl, ad.ch[0].mux, ad.ch[0].intctrl, ad.ch[0].flag, ad.log.length, ad.log.length && ad.log[ad.log.length - 1].c, Array.from(sim.evsys.mux).join(), Array.from(sim.evsys.count).join(), sim.clockHz].join(',');
+    if (key === adcKey && !force) return; adcKey = key;
+    const on = ad.on, sel = (ad.refctrl >> 4) & 7, f = sim.clockHz / ad.div(), vref = sel <= 4 ? (sel === 0 ? 1 : sel === 1 ? a.vcc / 1.6 : sel === 4 ? a.vcc / 2 : a.aref(sel === 2 ? 'A' : 'B')) : null;
+    let h = '<div class="spi-line"><span class="pill2 ' + (on ? 'ok' : '') + '">' + (on ? 'Enabled' : 'Disabled') + '</span><span>' + (ad.signed ? 'Signed' : 'Unsigned') + ' · ' + RESN[ad.resMode] + (ad.ctrlb & 8 ? ' · free-running' : '') + '</span>' +
+      '<span>Ref ' + (REFN[sel] || 'reserved') + (sel === 2 || sel === 3 ? ' = ' + (vref == null ? '<b style="color:var(--bad)">nothing connected</b>' : vref + ' V') : '') + '</span><span>f<sub>ADC</sub> ' + G.fmtHz(f) + ' (÷' + ad.div() + ')</span>' +
+      '<span class="flags">' + [0, 1, 2, 3].map(c => '<i class="' + (ad.ch[c].flag ? 'on' : '') + '">CH' + c + 'IF</i>').join('') + '</span></div>';
+    $('adcCfg').innerHTML = h;
+    const stat = (k, v, tt) => '<div class="stat"' + (tt ? ' title="' + tt + '"' : '') + '><span class="k">' + k + '</span><span class="v">' + v + '</span></div>';
+    const ch = ad.ch[0], [md, mx] = chText(ad, 0), lvl = ['OFF', 'LO', 'MED', 'HI'], last = ad.log[ad.log.length - 1];
+    const ev = ad.evctrl, act = ev & 7, evs = (ev >> 3) & 7;
+    const gc = (ch.ctrl >> 2) & 7, gain = (ch.ctrl & 3) === 3 ? (gc === 7 ? 0.5 : 1 << gc) : 1;
+    const sv = ad.signed ? (ch.res << 16) >> 16 : ch.res, full = (ad.resMode === 2 ? 128 : 2048) * (ad.signed ? 1 : 2) * (ad.resMode === 3 ? 16 : 1);
+    $('adcGrid').innerHTML = stat('CH0.CTRL', hx(ch.ctrl) + ' · ' + md, 'START 7 · GAIN 4:2 · INPUTMODE 1:0') + stat('CH0.MUXCTRL', hx(ch.mux) + ' · ' + mx, 'MUXPOS 6:3 · MUXNEG 2:0') +
+      stat('CH0.INTCTRL', hx(ch.intctrl) + ' · ' + lvl[ch.intctrl & 3] + (ch.intctrl & 3 ? ', ' + ['complete', 'below', '?', 'above'][(ch.intctrl >> 2) & 3] : ''), 'INTMODE 3:2 · INTLVL 1:0') +
+      stat('EVCTRL', hx(ev) + (act ? ' · ev ch ' + evs + ' → ' + ['', 'CH0', 'CH0–1', 'CH0–2', 'CH0–3', 'sweep', 'sync sweep', '?'][act] : ' · none'), 'SWEEP 7:6 · EVSEL 5:3 · EVACT 2:0') +
+      stat('CH0.RES', sv + ' · ' + hx(ch.res, 4)) + stat('= volts', vref ? fV(sv / full * vref / gain, ad.signed) : '—', 'RES × Vref / ' + full + (gain !== 1 ? ' / gain ' + gain : '')) +
+      stat('Conversions', ad.log.length + (last ? ' · ' + last.why : ''), last ? 'Last one measured ' + last.desc + ' = ' + fV(last.v, true) : '');
+    drawAdc(ad, full);
+    const evl = []; for (let c = 0; c < 8; c++) if (sim.evsys.mux[c]) evl.push('<b>CH' + c + '</b> ← ' + (EVNAME[sim.evsys.mux[c]] || hx(sim.evsys.mux[c])) + ' · ' + sim.evsys.count[c] + ' event' + (sim.evsys.count[c] === 1 ? '' : 's'));
+    const gen = a.gen ? ' · J3 now ' + fV(a.genV(t), true) : '';
+    $('evNote').innerHTML = (evl.length ? 'Event system: ' + evl.join(' · ') : 'Event system: no channel routed (EVSYS.CHnMUX = 0)') + (a.cds ? '<br>CdS now ' + fV(a.cdsV(t)) : '') + gen;
+  }
+  function drawAdc(ad, full) {
+    const cv = $('adcCv'); if (!cv.offsetParent) return; const dpr = window.devicePixelRatio || 1; const W = cv.clientWidth, H = 80;
+    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    const lx = 8, rx = W - 8, ty = 10, by = H - 10, lo = ad.signed ? -full : 0, hi = full;
+    const Y = (v) => by - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * (by - ty);
+    g.strokeStyle = '#1F3029'; g.beginPath(); for (let k = 0; k <= 4; k++) { const y = Math.round(ty + k * (by - ty) / 4) + .5; g.moveTo(lx, y); g.lineTo(rx, y); } g.stroke();
+    g.font = '500 9.5px "IBM Plex Mono", monospace'; g.fillStyle = '#7F9E91';
+    if (ad.signed) { g.setLineDash([3, 3]); g.strokeStyle = '#3B5248'; g.beginPath(); g.moveTo(lx, Y(0) + .5); g.lineTo(rx, Y(0) + .5); g.stroke(); g.setLineDash([]); }
+    const L = ad.log.slice(-160); if (!L.length) { g.fillText('No conversions yet', lx + 4, ty + 14); return; }
+    g.fillText('last ' + L.length + ' results · ' + lo + ' … ' + (hi - 1), lx + 2, ty - 1 + 9);
+    g.strokeStyle = '#63E3AE'; g.lineWidth = 1.6; g.beginPath(); const n = Math.max(2, L.length);
+    L.forEach((l, i) => { const x = lx + (n === 1 ? 0 : i / (n - 1)) * (rx - lx); const y = Y(l.res); if (i) g.lineTo(x, y); else g.moveTo(x, y); }); g.stroke();
+    g.fillStyle = '#63E3AE'; const lst = L[L.length - 1]; g.beginPath(); g.arc(lx + (L.length - 1) / (n - 1) * (rx - lx), Y(lst.res), 2.5, 0, 7); g.fill();
+  }
+  function render() { renderBoard(); drawAnl(); renderTerm(); renderCpu(); renderTimer(); renderStack(); renderSpi(); renderAdc(); }
   buildBoard(); buildCpu(); buildTerm();
   const openTerm = (u, cfg) => { if (u) TT().u = u; if (cfg) Object.assign(TT(), { plot: false }, cfg); App.st.closed.pTerm = false; $('pTerm').classList.remove('closed'); App.save(); buildTerm(); termClear(); T.fromC = 0; setView(TT().plot ? 'plot' : 'text'); renderTerm(true); };
   setView(TT().plot ? 'plot' : 'text');
-  return { render, setLang, varSnapshot, buildSpi, renderSpi, openTerm, buildTerm, buildBoard, renderBoard, drawAnl, renderCpu, renderTimer, renderStack, resetStack: () => { stkKey = ''; } };
+  return { render, setLang, varSnapshot, buildSpi, renderSpi, setAnalog, renderAdc, openTerm, buildTerm, buildBoard, renderBoard, drawAnl, renderCpu, renderTimer, renderStack, resetStack: () => { stkKey = ''; } };
 };
 })(window.XL = window.XL || {});
 
@@ -7453,10 +8448,10 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('xmb.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('xmb.' + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
 };
-const CLOCKS = [[2e6, '2 MHz'], [32e6, '32 MHz'], [20e6, '20 MHz'], [16e6, '16 MHz'], [8e6, '8 MHz'], [1e6, '1 MHz'], [100e3, '100 kHz'], [64e3, '64 kHz'], [32768, '32.768 kHz']];
+const CLOCKS = [[2e6, '2 MHz'], [32e6, '32 MHz'], [20e6, '20 MHz'], [16e6, '16 MHz'], [10e6, '10 MHz'], [8e6, '8 MHz'], [1e6, '1 MHz'], [100e3, '100 kHz'], [64e3, '64 kHz'], [32768, '32.768 kHz']];
 const SPEEDS = [['rt', 'Real time'], ['slow', 'Slow-mo 0.1×'], ['anim', 'Animate'], ['ff', 'Fast-forward']];
-const CATS = ['GPIO', 'Timers', 'Subroutines', 'Stack', 'Interrupts', 'Serial', 'SPI', 'Circuits'];
-const CAT_LABEL = { SPI: 'SPI & IMU · C' };
+const CATS = ['GPIO', 'Timers', 'Subroutines', 'Stack', 'Interrupts', 'Serial', 'SPI', 'ADC', 'Circuits'];
+const CAT_LABEL = { SPI: 'SPI & IMU · C', ADC: 'ADC & Events · C' };
 const ICON = {
   asm: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4L1.5 8 5 12M11 4l3.5 4-3.5 4M9.5 2.5l-3 11"/></svg>',
   run: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg>',
@@ -7477,7 +8472,7 @@ const App = XL.App = {
 if (!App.st.term) App.st.term = { u: 'USARTD0', baud: 70000, bits: 8, parity: 'O', stop: 1, cr: true };
 if (App.st.closed.pTerm === undefined) App.st.closed.pTerm = true;
 PORTL.forEach(L => { if (!App.st.pol[L]) App.st.pol[L] = 'H'; if (App.st.ext[L] === undefined) App.st.ext[L] = 0; });
-App.sim = new XL.Sim({ clockHz: App.st.clock });
+App.sim = new XL.Sim({ clockHz: App.st.clock }); App.sim.analog = new XL.AnalogBoard({});
 
 /* ---------------- toast / messages ---------------- */
 let toastT;
@@ -7726,13 +8721,13 @@ function applyVariantBoard(V) {
   const b = V.board || {}; if (b.slots) App.st.slots = b.slots.slice(0, 2);
   Object.assign(App.st.pol, b.led || {}); if (b.ext) Object.keys(b.ext).forEach(L => { App.st.ext[L] = b.ext[L]; });
   if (b.timer) App.st.timer = b.timer; App.st.anlSlot = 0; App.save(); panels.buildBoard();
-  applyDevices(b.devices);
+  applyDevices(b.devices); panels.setAnalog(b.analog || null, b.adc);
   if (b.usart) panels.openTerm(b.usart, b.term);
 }
 function openSample(id, noView) {
   const s = XL.SAMPLES.find(x => x.id === id); if (!s) return;
   App.running = false; App.st.slots = s.slots.slice(); Object.assign(App.st.pol, s.pol); if (s.timer) App.st.timer = s.timer;
-  App.st.cur = { mode: 'sample', id }; App.save(); panels.buildBoard(); applyDevices(s.devices); if (s.usart) panels.openTerm(s.usart, s.term); setClock(s.clock || 2e6);
+  App.st.cur = { mode: 'sample', id }; App.save(); panels.buildBoard(); applyDevices(s.devices); panels.setAnalog(s.analog || null, s.adc); if (s.usart) panels.openTerm(s.usart, s.term); setClock(s.clock || 2e6);
   App.ctx = s; setLang(s.lang || 'asm');
   loadDoc('sb:' + id, s.src); $('fname').innerHTML = 'sandbox / <b>' + esc(id) + (s.lang === 'c' ? '.c' : '.asm') + '</b>';
   assemble(true); renderList(); if (!noView) showView('code');
